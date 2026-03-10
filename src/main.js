@@ -194,8 +194,21 @@ tempInput.addEventListener('change', () => {
   updateThermalLabels();
 });
 
+async function loadObservationCounter() {
+  setObservationCounter('...');
+  try {
+    const res = await fetch('./api/observations', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    setObservationCounter(data.count, data.storage === 'memory' ? '(temporary)' : '');
+  } catch (err) {
+    setObservationCounter('...', '(offline)');
+  }
+}
+
 async function initApp() {
   world.reactionData = await loadReactionData();
+  await loadObservationCounter();
   resize();
   updateThermalLabels();
   syncTabButtons();

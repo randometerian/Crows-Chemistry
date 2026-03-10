@@ -24,6 +24,7 @@ const statusText = document.getElementById('statusText');
 const tabContent = document.getElementById('tabContent');
 const searchInput = document.getElementById('searchInput');
 const sidebarFooterText = document.getElementById('sidebarFooterText');
+const observationCounter = document.getElementById('observationCounter');
 
 const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
 const TAU = Math.PI * 2;
@@ -257,6 +258,19 @@ function reactionEquation(rule) {
 
 function getSpeciesCatalogItem(type) {
   return LIBRARY_ITEMS.find(item => item.key === type) || null;
+}
+
+function formatObservationCount(count) {
+  const value = Number(count);
+  if (!Number.isFinite(value) || value < 0) return '...';
+  return Math.floor(value).toLocaleString('en-US');
+}
+
+function setObservationCounter(count, note = '') {
+  if (!observationCounter) return;
+  const total = formatObservationCount(count);
+  const suffix = note ? ` ${note}` : '';
+  observationCounter.textContent = `THIS SITE HAS BEEN OBSERVED ${total} TIMES${suffix}`;
 }
 
 function getSpeciesDisplayName(type) {
