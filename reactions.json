@@ -1,0 +1,705 @@
+{
+  "speciesHints": {
+    "H2": "Hydrogen gas participates in the scripted combustion and halogenation rules.",
+    "O2": "Oxygen gas reacts with hydrogen under heat and can help form peroxide in the warm zone.",
+    "Cl2": "Chlorine gas reacts with hydrogen in close gas-phase contact.",
+    "HCl": "Hydrogen chloride is a scripted gas product in the hydrogen-chlorine rule set.",
+    "CO": "Carbon monoxide is an intermediate oxide that can oxidize further into carbon dioxide.",
+    "CO2": "Carbon dioxide is a stable combustion product from methane and carbon oxidation rules.",
+    "NaCl": "Sodium chloride is produced by scripted ionic neutralization rules.",
+    "NaOH": "Sodium hydroxide is a strong base produced from sodium-water contact and used in neutralization.",
+    "NaOCl": "Sodium hypochlorite is modeled as bleach for the haloform pathway with acetone.",
+    "H2O": "Water forms through the scripted hydrogen-oxygen combustion rule.",
+    "H2O2": "Hydrogen peroxide can form in a narrower warm oxygen-hydrogen window and decompose when overheated.",
+    "CH4": "Methane is a simple fuel gas that combusts into carbon dioxide and water when heated with oxygen.",
+    "CH3Cl": "Chloromethane is the first chlorinated methane intermediate in the halogenation chain.",
+    "CH2Cl2": "Dichloromethane is a denser chlorinated solvent formed by further methane chlorination.",
+    "CH3OH": "Methanol can form from carbon monoxide and hydrogen under pressure and oxidize further.",
+    "CH2O": "Formaldehyde is a reactive oxidation intermediate from methanol.",
+    "HCOOH": "Formic acid is a simple oxidized carbon product formed from formaldehyde.",
+    "CH3CHO": "Acetaldehyde is staged for later oxidation chemistry.",
+    "CH3COOH": "Acetic acid is staged for later weak-acid chemistry.",
+    "O3": "Ozone forms from oxygen radicals and can thermally decay back to oxygen and atomic oxygen.",
+    "acetone": "Acetone participates in the haloform pathway when clustered with bleach.",
+    "CHCl3": "Chloroform is generated from the scripted bleach-acetone haloform reaction.",
+    "CCl4": "Carbon tetrachloride is the fully chlorinated end point of the methane chain.",
+    "NaHCO3": "Sodium bicarbonate is a CO2 capture salt that can decompose when heated.",
+    "Na2CO3": "Sodium carbonate is a stronger carbon dioxide capture product from caustic soda.",
+    "NaC2H3O2": "Sodium acetate is the salt byproduct from the scripted haloform pathway.",
+    "atom-H": "Hydrogen atoms are used by recombination rules to build H2 and H2O.",
+    "atom-N": "Nitrogen atoms are available for future expansion but are not yet used in scripted reactions.",
+    "atom-O": "Oxygen atoms are used by recombination rules to build O2 and H2O.",
+    "atom-Cl": "Chlorine atoms can be staged visually, but the main chlorine chemistry uses Cl2 gas.",
+    "atom-Na": "Sodium atoms are staged visually, while the main bleach chemistry uses NaOCl.",
+    "atom-C": "Carbon atoms now feed simplified oxidation rules that form CO and CO2."
+  },
+  "reactions": [
+    {
+      "id": "carbon_monoxide_formation",
+      "name": "Carbon Monoxide Formation",
+      "category": "oxidation",
+      "reactants": [
+        { "type": "atom-C", "count": 1 },
+        { "type": "atom-O", "count": 1 }
+      ],
+      "products": [
+        { "type": "CO", "count": 1 }
+      ],
+    
+      "conditions": {
+        "tempMinC": 20,
+        "tempMaxC": 2200,
+        "proximity": 90
+      },
+      "kinetics": {
+        "progressPerSecond": 1.0,
+        "contactThreshold": 0.55,
+        "decayPerSecond": 1.6,
+        "drift": 0.03
+      },
+      "displayEquation": "C + O -> CO",
+      "note": "Simplified atomic oxidation step."
+    },
+    {
+      "id": "carbon_dioxide_formation",
+      "name": "Carbon Dioxide Formation",
+      "category": "oxidation",
+      "reactants": [
+        { "type": "CO", "count": 1 },
+        { "type": "atom-O", "count": 1 }
+      ],
+      "products": [
+        { "type": "CO2", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": 30,
+        "tempMaxC": 2400,
+        "proximity": 110
+      },
+      "kinetics": {
+        "progressPerSecond": 0.95,
+        "contactThreshold": 0.7,
+        "decayPerSecond": 1.4,
+        "drift": 0.03
+      },
+      "displayEquation": "CO + O -> CO2",
+      "note": "Further oxidation of carbon monoxide."
+    },
+    {
+      "id": "haloform_bleach_acetone",
+      "name": "Haloform Chlorination",
+      "category": "organic",
+      "reactants": [
+        { "type": "acetone", "count": 1 },
+        { "type": "NaOCl", "count": 3 }
+      ],
+      "products": [
+        { "type": "CHCl3", "count": 1 },
+        { "type": "NaC2H3O2", "count": 1 },
+        { "type": "NaCl", "count": 2 },
+        { "type": "H2O", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": 8,
+        "tempMaxC": 70,
+        "proximity": 210,
+        "phase": "liquid"
+      },
+      "kinetics": {
+        "progressPerSecond": 0.9,
+        "contactThreshold": 1.2,
+        "decayPerSecond": 0.6,
+        "drift": 0.06
+      },
+      "displayEquation": "acetone + 3 NaOCl -> CHCl3 + NaC2H3O2 + 2 NaCl + H2O",
+      "note": "Requires sustained liquid contact."
+    },
+    {
+      "id": "water_combustion",
+      "name": "Hydrogen Oxidation",
+      "category": "combustion",
+      "reactants": [
+        { "type": "H2", "count": 2 },
+        { "type": "O2", "count": 1 }
+      ],
+      "products": [
+        { "type": "H2O", "count": 2 }
+      ],
+      "conditions": {
+        "tempMinC": 180,
+        "tempMaxC": 2400,
+        "proximity": 150
+      },
+      "kinetics": {
+        "progressPerSecond": 1.6,
+        "contactThreshold": 0.65,
+        "decayPerSecond": 1.8,
+        "drift": 0.045
+      },
+      "displayEquation": "2 H2 + O2 -> 2 H2O",
+      "note": "Needs heat and close gas contact."
+    },
+    {
+      "id": "methane_combustion",
+      "name": "Methane Combustion",
+      "category": "combustion",
+      "reactants": [
+        { "type": "CH4", "count": 1 },
+        { "type": "O2", "count": 2 }
+      ],
+      "products": [
+        { "type": "CO2", "count": 1 },
+        { "type": "H2O", "count": 2 }
+      ],
+      "conditions": {
+        "tempMinC": 260,
+        "tempMaxC": 2800,
+        "proximity": 160
+      },
+      "kinetics": {
+        "progressPerSecond": 1.15,
+        "contactThreshold": 0.75,
+        "decayPerSecond": 1.7,
+        "drift": 0.05
+      },
+      "displayEquation": "CH4 + 2 O2 -> CO2 + 2 H2O",
+      "note": "Hot gas-phase combustion pathway."
+    },
+    {
+      "id": "peroxide_formation",
+      "name": "Peroxide Formation Window",
+      "category": "oxidation",
+      "reactants": [
+        { "type": "H2", "count": 1 },
+        { "type": "O2", "count": 1 }
+      ],
+      "products": [
+        { "type": "H2O2", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": 90,
+        "tempMaxC": 320,
+        "proximity": 130
+      },
+      "kinetics": {
+        "progressPerSecond": 0.45,
+        "contactThreshold": 0.9,
+        "decayPerSecond": 1.4,
+        "drift": 0.035
+      },
+      "displayEquation": "H2 + O2 -> H2O2",
+      "note": "A narrow warm-window side pathway."
+    },
+    {
+      "id": "peroxide_decomposition",
+      "name": "Peroxide Decomposition",
+      "category": "decomposition",
+      "reactants": [
+        { "type": "H2O2", "count": 2 }
+      ],
+      "products": [
+        { "type": "H2O", "count": 2 },
+        { "type": "O2", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": 180,
+        "tempMaxC": 3200,
+        "proximity": 150
+      },
+      "kinetics": {
+        "progressPerSecond": 0.85,
+        "contactThreshold": 0.75,
+        "decayPerSecond": 1.2,
+        "drift": 0.025
+      },
+      "displayEquation": "2 H2O2 -> 2 H2O + O2",
+      "note": "Accelerates with heat."
+    },
+    {
+      "id": "sodium_water_reaction",
+      "name": "Sodium Water Reaction",
+      "category": "metal",
+      "reactants": [
+        { "type": "atom-Na", "count": 2 },
+        { "type": "H2O", "count": 2 }
+      ],
+      "products": [
+        { "type": "NaOH", "count": 2 },
+        { "type": "H2", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": -10,
+        "tempMaxC": 1200,
+        "proximity": 130
+      },
+      "kinetics": {
+        "progressPerSecond": 1.2,
+        "contactThreshold": 0.7,
+        "decayPerSecond": 1.6,
+        "drift": 0.045
+      },
+      "displayEquation": "2 Na + 2 H2O -> 2 NaOH + H2",
+      "note": "Simplified alkali metal-water reaction."
+    },
+    {
+      "id": "hydrogen_chlorination",
+      "name": "Hydrogen Chlorination",
+      "category": "halogenation",
+      "reactants": [
+        { "type": "H2", "count": 1 },
+        { "type": "Cl2", "count": 1 }
+      ],
+      "products": [
+        { "type": "HCl", "count": 2 }
+      ],
+      "conditions": {
+        "tempMinC": 40,
+        "tempMaxC": 1800,
+        "proximity": 145
+      },
+      "kinetics": {
+        "progressPerSecond": 1.0,
+        "contactThreshold": 0.7,
+        "decayPerSecond": 1.5,
+        "drift": 0.04
+      },
+      "displayEquation": "H2 + Cl2 -> 2 HCl",
+      "note": "Gas-phase halogenation."
+    },
+    {
+      "id": "acid_base_neutralization",
+      "name": "Hydrogen Chloride Neutralization",
+      "category": "acid-base",
+      "reactants": [
+        { "type": "HCl", "count": 1 },
+        { "type": "NaOH", "count": 1 }
+      ],
+      "products": [
+        { "type": "NaCl", "count": 1 },
+        { "type": "H2O", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": -20,
+        "tempMaxC": 1400,
+        "proximity": 135
+      },
+      "kinetics": {
+        "progressPerSecond": 1.0,
+        "contactThreshold": 0.65,
+        "decayPerSecond": 1.5,
+        "drift": 0.04
+      },
+      "displayEquation": "HCl + NaOH -> NaCl + H2O",
+      "note": "Simplified neutralization pathway."
+    },
+    {
+      "id": "hydrogen_atom_recombination",
+      "name": "Hydrogen Atom Recombination",
+      "category": "radical",
+      "reactants": [
+        { "type": "atom-H", "count": 2 }
+      ],
+      "products": [
+        { "type": "H2", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": -50,
+        "tempMaxC": 1200,
+        "proximity": 85
+      },
+      "kinetics": {
+        "progressPerSecond": 1.4,
+        "contactThreshold": 0.45,
+        "decayPerSecond": 2.0,
+        "drift": 0.035
+      },
+      "displayEquation": "2 H -> H2",
+      "note": "Fast atomic recombination."
+    },
+    {
+      "id": "oxygen_atom_recombination",
+      "name": "Oxygen Atom Recombination",
+      "category": "radical",
+      "reactants": [
+        { "type": "atom-O", "count": 2 }
+      ],
+      "products": [
+        { "type": "O2", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": -50,
+        "tempMaxC": 1400,
+        "proximity": 90
+      },
+      "kinetics": {
+        "progressPerSecond": 1.0,
+        "contactThreshold": 0.55,
+        "decayPerSecond": 1.8,
+        "drift": 0.03
+      },
+      "displayEquation": "2 O -> O2",
+      "note": "Fast atomic recombination."
+    },
+    {
+      "id": "ozone_formation",
+      "name": "Ozone Formation",
+      "category": "radical",
+      "reactants": [
+        { "type": "O2", "count": 1 },
+        { "type": "atom-O", "count": 1 }
+      ],
+      "products": [
+        { "type": "O3", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": -40,
+        "tempMaxC": 700,
+        "proximity": 95
+      },
+      "kinetics": {
+        "progressPerSecond": 0.8,
+        "contactThreshold": 0.6,
+        "decayPerSecond": 1.5,
+        "drift": 0.03
+      },
+      "displayEquation": "O2 + O -> O3",
+      "note": "Oxygen radical association."
+    },
+    {
+      "id": "ozone_decomposition",
+      "name": "Ozone Decomposition",
+      "category": "decomposition",
+      "reactants": [
+        { "type": "O3", "count": 1 }
+      ],
+      "products": [
+        { "type": "O2", "count": 1 },
+        { "type": "atom-O", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": 140,
+        "tempMaxC": 2600,
+        "proximity": 80
+      },
+      "kinetics": {
+        "progressPerSecond": 0.55,
+        "contactThreshold": 0.85,
+        "decayPerSecond": 1.2,
+        "drift": 0
+      },
+      "displayEquation": "O3 -> O2 + O",
+      "note": "Thermal ozone breakdown."
+    },
+    {
+      "id": "atomic_water_assembly",
+      "name": "Atomic Water Assembly",
+      "category": "radical",
+      "reactants": [
+        { "type": "atom-O", "count": 1 },
+        { "type": "atom-H", "count": 2 }
+      ],
+      "products": [
+        { "type": "H2O", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": -20,
+        "tempMaxC": 900,
+        "proximity": 95
+      },
+      "kinetics": {
+        "progressPerSecond": 1.1,
+        "contactThreshold": 0.6,
+        "decayPerSecond": 1.7,
+        "drift": 0.03
+      },
+      "displayEquation": "O + 2 H -> H2O",
+      "note": "Simplified atomic assembly rule."
+    },
+    {
+      "id": "bleach_formation",
+      "name": "Bleach Formation",
+      "category": "halogenation",
+      "reactants": [
+        { "type": "Cl2", "count": 1 },
+        { "type": "NaOH", "count": 2 }
+      ],
+      "products": [
+        { "type": "NaOCl", "count": 1 },
+        { "type": "NaCl", "count": 1 },
+        { "type": "H2O", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": -10,
+        "tempMaxC": 90,
+        "proximity": 145
+      },
+      "kinetics": {
+        "progressPerSecond": 0.75,
+        "contactThreshold": 0.9,
+        "decayPerSecond": 1.2,
+        "drift": 0.05
+      },
+      "displayEquation": "Cl2 + 2 NaOH -> NaOCl + NaCl + H2O",
+      "note": "Simplified bleach-forming disproportionation."
+    },
+    {
+      "id": "methanol_synthesis",
+      "name": "Methanol Synthesis",
+      "category": "organic",
+      "reactants": [
+        { "type": "CO", "count": 1 },
+        { "type": "H2", "count": 2 }
+      ],
+      "products": [
+        { "type": "CH3OH", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": 120,
+        "tempMaxC": 420,
+        "pressureMinAtm": 2.5,
+        "proximity": 140
+      },
+      "kinetics": {
+        "progressPerSecond": 0.55,
+        "contactThreshold": 0.95,
+        "decayPerSecond": 1.1,
+        "drift": 0.05
+      },
+      "displayEquation": "CO + 2 H2 -> CH3OH",
+      "note": "Pressure-assisted hydrogenation of carbon monoxide."
+    },
+    {
+      "id": "methanol_oxidation",
+      "name": "Methanol Oxidation",
+      "category": "oxidation",
+      "reactants": [
+        { "type": "CH3OH", "count": 1 },
+        { "type": "atom-O", "count": 1 }
+      ],
+      "products": [
+        { "type": "CH2O", "count": 1 },
+        { "type": "H2O", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": 40,
+        "tempMaxC": 900,
+        "proximity": 115
+      },
+      "kinetics": {
+        "progressPerSecond": 0.8,
+        "contactThreshold": 0.75,
+        "decayPerSecond": 1.3,
+        "drift": 0.04
+      },
+      "displayEquation": "CH3OH + O -> CH2O + H2O",
+      "note": "Simplified oxidation toward formaldehyde."
+    },
+    {
+      "id": "formaldehyde_oxidation",
+      "name": "Formaldehyde Oxidation",
+      "category": "oxidation",
+      "reactants": [
+        { "type": "CH2O", "count": 1 },
+        { "type": "atom-O", "count": 1 }
+      ],
+      "products": [
+        { "type": "HCOOH", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": 20,
+        "tempMaxC": 800,
+        "proximity": 110
+      },
+      "kinetics": {
+        "progressPerSecond": 0.75,
+        "contactThreshold": 0.7,
+        "decayPerSecond": 1.3,
+        "drift": 0.03
+      },
+      "displayEquation": "CH2O + O -> HCOOH",
+      "note": "Further oxidation toward a simple acid."
+    },
+    {
+      "id": "chloromethane_formation",
+      "name": "Chloromethane Formation",
+      "category": "halogenation",
+      "reactants": [
+        { "type": "CH4", "count": 1 },
+        { "type": "Cl2", "count": 1 }
+      ],
+      "products": [
+        { "type": "CH3Cl", "count": 1 },
+        { "type": "HCl", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": 70,
+        "tempMaxC": 1800,
+        "proximity": 150
+      },
+      "kinetics": {
+        "progressPerSecond": 0.7,
+        "contactThreshold": 0.85,
+        "decayPerSecond": 1.2,
+        "drift": 0.04
+      },
+      "displayEquation": "CH4 + Cl2 -> CH3Cl + HCl",
+      "note": "First methane chlorination step."
+    },
+    {
+      "id": "dichloromethane_formation",
+      "name": "Dichloromethane Formation",
+      "category": "halogenation",
+      "reactants": [
+        { "type": "CH3Cl", "count": 1 },
+        { "type": "Cl2", "count": 1 }
+      ],
+      "products": [
+        { "type": "CH2Cl2", "count": 1 },
+        { "type": "HCl", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": 80,
+        "tempMaxC": 1900,
+        "proximity": 150
+      },
+      "kinetics": {
+        "progressPerSecond": 0.68,
+        "contactThreshold": 0.88,
+        "decayPerSecond": 1.2,
+        "drift": 0.04
+      },
+      "displayEquation": "CH3Cl + Cl2 -> CH2Cl2 + HCl",
+      "note": "Second methane chlorination step."
+    },
+    {
+      "id": "chloroform_chain_formation",
+      "name": "Chloroform Chain Formation",
+      "category": "halogenation",
+      "reactants": [
+        { "type": "CH2Cl2", "count": 1 },
+        { "type": "Cl2", "count": 1 }
+      ],
+      "products": [
+        { "type": "CHCl3", "count": 1 },
+        { "type": "HCl", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": 95,
+        "tempMaxC": 2000,
+        "proximity": 155
+      },
+      "kinetics": {
+        "progressPerSecond": 0.65,
+        "contactThreshold": 0.9,
+        "decayPerSecond": 1.15,
+        "drift": 0.04
+      },
+      "displayEquation": "CH2Cl2 + Cl2 -> CHCl3 + HCl",
+      "note": "Third methane chlorination step."
+    },
+    {
+      "id": "carbon_tetrachloride_formation",
+      "name": "Carbon Tetrachloride Formation",
+      "category": "halogenation",
+      "reactants": [
+        { "type": "CHCl3", "count": 1 },
+        { "type": "Cl2", "count": 1 }
+      ],
+      "products": [
+        { "type": "CCl4", "count": 1 },
+        { "type": "HCl", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": 110,
+        "tempMaxC": 2200,
+        "proximity": 160
+      },
+      "kinetics": {
+        "progressPerSecond": 0.62,
+        "contactThreshold": 0.95,
+        "decayPerSecond": 1.1,
+        "drift": 0.035
+      },
+      "displayEquation": "CHCl3 + Cl2 -> CCl4 + HCl",
+      "note": "Final chlorination step to carbon tetrachloride."
+    },
+    {
+      "id": "bicarbonate_formation",
+      "name": "Sodium Bicarbonate Formation",
+      "category": "acid-base",
+      "reactants": [
+        { "type": "CO2", "count": 1 },
+        { "type": "NaOH", "count": 1 }
+      ],
+      "products": [
+        { "type": "NaHCO3", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": -10,
+        "tempMaxC": 120,
+        "proximity": 130
+      },
+      "kinetics": {
+        "progressPerSecond": 0.75,
+        "contactThreshold": 0.78,
+        "decayPerSecond": 1.2,
+        "drift": 0.04
+      },
+      "displayEquation": "CO2 + NaOH -> NaHCO3",
+      "note": "Simple carbon dioxide capture pathway."
+    },
+    {
+      "id": "carbonate_formation",
+      "name": "Sodium Carbonate Formation",
+      "category": "acid-base",
+      "reactants": [
+        { "type": "CO2", "count": 1 },
+        { "type": "NaOH", "count": 2 }
+      ],
+      "products": [
+        { "type": "Na2CO3", "count": 1 },
+        { "type": "H2O", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": 10,
+        "tempMaxC": 160,
+        "pressureMinAtm": 1.1,
+        "proximity": 140
+      },
+      "kinetics": {
+        "progressPerSecond": 0.68,
+        "contactThreshold": 0.92,
+        "decayPerSecond": 1.15,
+        "drift": 0.045
+      },
+      "displayEquation": "CO2 + 2 NaOH -> Na2CO3 + H2O",
+      "note": "Stronger caustic capture under heavier loading."
+    },
+    {
+      "id": "bicarbonate_decomposition",
+      "name": "Sodium Bicarbonate Decomposition",
+      "category": "decomposition",
+      "reactants": [
+        { "type": "NaHCO3", "count": 2 }
+      ],
+      "products": [
+        { "type": "Na2CO3", "count": 1 },
+        { "type": "CO2", "count": 1 },
+        { "type": "H2O", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": 110,
+        "tempMaxC": 2200,
+        "proximity": 120
+      },
+      "kinetics": {
+        "progressPerSecond": 0.7,
+        "contactThreshold": 0.72,
+        "decayPerSecond": 1.0,
+        "drift": 0.02
+      },
+      "displayEquation": "2 NaHCO3 -> Na2CO3 + CO2 + H2O",
+      "note": "Heating releases carbon dioxide from bicarbonate."
+    }
+  ]
+}
