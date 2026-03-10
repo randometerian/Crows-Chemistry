@@ -2,7 +2,8 @@ const http = require("http")
 const fs = require("fs")
 const path = require("path")
 
-const PORT = 3000
+const PORT = Number(process.env.PORT) || 3000
+const HOST = "0.0.0.0"
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -11,16 +12,23 @@ const MIME = {
 }
 
 http.createServer((req,res)=>{
+const requestUrl = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`)
+const pathname = decodeURIComponent(requestUrl.pathname)
+const relativePath = pathname === "/" ? "Main.html" : pathname.replace(/^\/+/, "")
+const filePath = path.resolve(__dirname, relativePath)
 
-let file = req.url === "/" ? "Main.html" : decodeURIComponent(req.url)
-
-let filePath = path.join(__dirname,file)
+if (!filePath.startsWith(__dirname + path.sep) && filePath !== path.join(__dirname, "Main.html")) {
+res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" })
+res.end("Forbidden")
+return
+}
 
 fs.readFile(filePath,(err,data)=>{
 
 if(err){
-res.writeHead(404)
-res.end("Not found")
+const status = err.code === "ENOENT" ? 404 : 500
+res.writeHead(status, { "Content-Type": "text/plain; charset=utf-8" })
+res.end(status === 404 ? "Not found" : "Internal server error")
 return
 }
 
@@ -31,8 +39,8 @@ res.end(data)
 
 })
 
-}).listen(PORT,()=>{
+}).listen(PORT, HOST, ()=>{
 
-console.log("Server running at http://localhost:" + PORT)
+console.log(`Server running at http://${HOST}:${PORT}`)
 
 })
