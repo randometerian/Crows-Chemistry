@@ -4,6 +4,10 @@
     "O2": "Oxygen gas reacts with hydrogen under heat and can help form peroxide in the warm zone.",
     "Cl2": "Chlorine gas reacts with hydrogen in close gas-phase contact.",
     "HCl": "Hydrogen chloride is a scripted gas product in the hydrogen-chlorine rule set.",
+    "HOCl": "Hypochlorous acid forms when chlorine contacts water and can oxidize further.",
+    "HClO2": "Chlorous acid is an oxidized oxychlorine intermediate in the aqueous chlorine ladder.",
+    "HClO3": "Chloric acid is a stronger oxychlorine acid that can oxidize toward perchloric acid.",
+    "HClO4": "Perchloric acid is the most oxidized oxychlorine acid currently modeled.",
     "CO": "Carbon monoxide is an intermediate oxide that can oxidize further into carbon dioxide.",
     "CO2": "Carbon dioxide is a stable combustion product from methane and carbon oxidation rules.",
     "NaCl": "Sodium chloride is produced by scripted ionic neutralization rules.",
@@ -267,6 +271,32 @@
       "note": "Gas-phase halogenation."
     },
     {
+      "id": "chlorine_hydrolysis",
+      "name": "Chlorine Hydrolysis",
+      "category": "acid-base",
+      "reactants": [
+        { "type": "Cl2", "count": 1 },
+        { "type": "H2O", "count": 1 }
+      ],
+      "products": [
+        { "type": "HOCl", "count": 1 },
+        { "type": "HCl", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": -5,
+        "tempMaxC": 120,
+        "proximity": 145
+      },
+      "kinetics": {
+        "progressPerSecond": 0.55,
+        "contactThreshold": 0.95,
+        "decayPerSecond": 1.2,
+        "drift": 0.05
+      },
+      "displayEquation": "Cl2 + H2O -> HOCl + HCl",
+      "note": "Simplified aqueous chlorine disproportionation."
+    },
+    {
       "id": "acid_base_neutralization",
       "name": "Hydrogen Chloride Neutralization",
       "category": "acid-base",
@@ -520,6 +550,31 @@
       "note": "Further oxidation toward a simple acid."
     },
     {
+      "id": "acetaldehyde_oxidation",
+      "name": "Acetaldehyde Oxidation",
+      "category": "oxidation",
+      "reactants": [
+        { "type": "CH3CHO", "count": 1 },
+        { "type": "atom-O", "count": 1 }
+      ],
+      "products": [
+        { "type": "CH3COOH", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": 25,
+        "tempMaxC": 840,
+        "proximity": 115
+      },
+      "kinetics": {
+        "progressPerSecond": 0.72,
+        "contactThreshold": 0.72,
+        "decayPerSecond": 1.25,
+        "drift": 0.035
+      },
+      "displayEquation": "CH3CHO + O -> CH3COOH",
+      "note": "Aldehyde oxidation toward a weak carboxylic acid."
+    },
+    {
       "id": "chloromethane_formation",
       "name": "Chloromethane Formation",
       "category": "halogenation",
@@ -596,6 +651,84 @@
       },
       "displayEquation": "CH2Cl2 + Cl2 -> CHCl3 + HCl",
       "note": "Third methane chlorination step."
+    },
+    {
+      "id": "hypochlorous_oxidation",
+      "name": "Hypochlorous Acid Oxidation",
+      "category": "oxidation",
+      "reactants": [
+        { "type": "HOCl", "count": 1 },
+        { "type": "atom-O", "count": 1 }
+      ],
+      "products": [
+        { "type": "HClO2", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": 10,
+        "tempMaxC": 480,
+        "proximity": 120,
+        "phase": "liquid"
+      },
+      "kinetics": {
+        "progressPerSecond": 0.52,
+        "contactThreshold": 0.82,
+        "decayPerSecond": 1.1,
+        "drift": 0.05
+      },
+      "displayEquation": "HOCl + O -> HClO2",
+      "note": "Stepwise oxychlorine oxidation in the water phase."
+    },
+    {
+      "id": "chlorous_oxidation",
+      "name": "Chlorous Acid Oxidation",
+      "category": "oxidation",
+      "reactants": [
+        { "type": "HClO2", "count": 1 },
+        { "type": "atom-O", "count": 1 }
+      ],
+      "products": [
+        { "type": "HClO3", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": 20,
+        "tempMaxC": 520,
+        "proximity": 120,
+        "phase": "liquid"
+      },
+      "kinetics": {
+        "progressPerSecond": 0.48,
+        "contactThreshold": 0.86,
+        "decayPerSecond": 1.08,
+        "drift": 0.05
+      },
+      "displayEquation": "HClO2 + O -> HClO3",
+      "note": "Further oxidation along the oxychlorine acid ladder."
+    },
+    {
+      "id": "chloric_oxidation",
+      "name": "Chloric Acid Oxidation",
+      "category": "oxidation",
+      "reactants": [
+        { "type": "HClO3", "count": 1 },
+        { "type": "atom-O", "count": 1 }
+      ],
+      "products": [
+        { "type": "HClO4", "count": 1 }
+      ],
+      "conditions": {
+        "tempMinC": 30,
+        "tempMaxC": 560,
+        "proximity": 125,
+        "phase": "liquid"
+      },
+      "kinetics": {
+        "progressPerSecond": 0.44,
+        "contactThreshold": 0.9,
+        "decayPerSecond": 1.05,
+        "drift": 0.05
+      },
+      "displayEquation": "HClO3 + O -> HClO4",
+      "note": "Highest oxidation step for the current oxychlorine pathway."
     },
     {
       "id": "carbon_tetrachloride_formation",

@@ -71,7 +71,7 @@
     .sidebar{
       left:14px;
       top:14px;
-      bottom:92px;
+      bottom:14px;
       width:min(360px, calc(100vw - 28px));
       padding:14px;
       display:grid;
@@ -80,15 +80,16 @@
     }
 
     .bottom{
-      left:50%;
+      right:14px;
+      top:14px;
       bottom:14px;
-      transform:translateX(-50%);
-      width:min(980px, calc(100vw - 28px));
+      width:min(340px, calc(100vw - 402px));
       padding:12px;
       display:grid;
-      grid-template-columns:auto 1fr auto;
+      grid-template-rows:auto 1fr auto;
       gap:12px;
-      align-items:center;
+      align-items:stretch;
+      align-content:start;
     }
 
     h1,h2,h3,p{ margin:0; }
@@ -337,9 +338,9 @@
 
     .toolbar{
       display:flex;
+      flex-direction:column;
       gap:8px;
-      align-items:center;
-      flex-wrap:wrap;
+      align-items:stretch;
     }
 
     .heatActionWrap{
@@ -356,6 +357,12 @@
     }
 
     .heatDoseWrap{
+      display:grid;
+      gap:6px;
+      min-width:180px;
+    }
+
+    .stirWrap{
       display:grid;
       gap:6px;
       min-width:180px;
@@ -445,11 +452,11 @@
     }
 
     .status{
-      text-align:right;
+      text-align:left;
       color:var(--muted);
       font-size:12px;
       line-height:1.45;
-      min-width:170px;
+      min-width:0;
     }
 
     .inspectGrid{
@@ -516,14 +523,27 @@
       padding: 1px 5px;
     }
 
-    @media (max-width: 980px){
+    @media (max-width: 1100px){
       .bottom{
+        left:50%;
+        right:auto;
+        top:auto;
+        bottom:14px;
+        transform:translateX(-50%);
+        width:min(980px, calc(100vw - 28px));
         grid-template-columns:1fr;
+        grid-template-rows:auto;
+      }
+      .toolbar{
+        flex-direction:row;
+        align-items:center;
+        flex-wrap:wrap;
       }
       .status{
         text-align:left;
       }
       .sidebar{
+        bottom:92px;
         width:min(340px, calc(100vw - 28px));
       }
     }
@@ -568,6 +588,13 @@
             <button id="heatPulseBtn">Inject Heat</button>
             <button id="coolPulseBtn" class="miniBtn">Cool Shot</button>
             <button id="stirBtn" class="miniBtn">Stir</button>
+          </div>
+          <div class="stirWrap">
+            <div class="heatDoseLabel">
+              <span id="stirStrengthLabel">Stir strength</span>
+              <span id="stirStrengthValue">1.8x</span>
+            </div>
+            <input id="stirStrengthSlider" type="range" min="0.5" max="4" step="0.1" value="1.8" />
           </div>
           <div class="heatDoseWrap">
             <div class="heatDoseLabel">
@@ -617,6 +644,9 @@ const clearBtn = document.getElementById('clearBtn');
 const heatPulseBtn = document.getElementById('heatPulseBtn');
 const coolPulseBtn = document.getElementById('coolPulseBtn');
 const stirBtn = document.getElementById('stirBtn');
+const stirStrengthSlider = document.getElementById('stirStrengthSlider');
+const stirStrengthLabel = document.getElementById('stirStrengthLabel');
+const stirStrengthValue = document.getElementById('stirStrengthValue');
 const timeScaleBtn = document.getElementById('timeScaleBtn');
 const heatSlider = document.getElementById('heatSlider');
 const heatDoseSlider = document.getElementById('heatDoseSlider');
@@ -801,12 +831,17 @@ const THERMAL_RULE_DEFAULTS = {
   peroxide_decomposition: 88,
   sodium_water_reaction: 180,
   hydrogen_chlorination: 145,
+  chlorine_hydrolysis: 22,
   acid_base_neutralization: 72,
   hydrogen_atom_recombination: 24,
   oxygen_atom_recombination: 42,
   ozone_formation: -18,
   ozone_decomposition: 36,
-  atomic_water_assembly: 95
+  atomic_water_assembly: 95,
+  acetaldehyde_oxidation: 46,
+  hypochlorous_oxidation: 18,
+  chlorous_oxidation: 16,
+  chloric_oxidation: 14
 };
 
 function normalizeReactionData(data) {
@@ -1087,6 +1122,46 @@ const LIBRARY_ITEMS = [
     phase: 'gas',
     description: 'Polar gas that forms from hydrogen and chlorine chemistry.',
     search: 'hydrogen chloride hcl gas acid'
+  },
+  {
+    key: 'HOCl',
+    name: 'Hypochlorous acid',
+    label: 'HOCl',
+    formula: 'HOCl',
+    category: 'molecules',
+    phase: 'liquid',
+    description: 'Reactive oxychlorine acid that forms when chlorine meets water.',
+    search: 'hypochlorous acid hocl oxychlorine bleach acid'
+  },
+  {
+    key: 'HClO2',
+    name: 'Chlorous acid',
+    label: 'HClO₂',
+    formula: 'HClO₂',
+    category: 'molecules',
+    phase: 'liquid',
+    description: 'Intermediate oxychlorine acid in the stepwise oxidation ladder.',
+    search: 'chlorous acid hclo2 oxychlorine acid'
+  },
+  {
+    key: 'HClO3',
+    name: 'Chloric acid',
+    label: 'HClO₃',
+    formula: 'HClO₃',
+    category: 'molecules',
+    phase: 'liquid',
+    description: 'Strong oxychlorine acid that can oxidize further toward perchloric acid.',
+    search: 'chloric acid hclo3 oxychlorine acid'
+  },
+  {
+    key: 'HClO4',
+    name: 'Perchloric acid',
+    label: 'HClO₄',
+    formula: 'HClO₄',
+    category: 'molecules',
+    phase: 'liquid',
+    description: 'Highly oxidized oxychlorine acid at the end of the current chlorine ladder.',
+    search: 'perchloric acid hclo4 oxychlorine acid'
   },
   {
     key: 'CO',
@@ -1406,6 +1481,92 @@ const SPECIES = {
     bonds: [{ a: 0, b: 1, order: 1, rest: 31 }],
     color: '#a9e9b0',
     formula: 'HCl'
+  },
+  HOCl: {
+    key: 'HOCl',
+    label: 'HOCl',
+    display: 'Hypochlorous acid',
+    phase: 'liquid',
+    density: 1.17,
+    miscibleGroup: 'water',
+    atomEls: ['H', 'O', 'Cl'],
+    bonds: [
+      { a: 0, b: 1, order: 1, rest: 28 },
+      { a: 1, b: 2, order: 1, rest: 31 }
+    ],
+    angleConstraints: [{ center: 1, a: 0, b: 2, angle: 103 * Math.PI / 180 }],
+    color: '#bcefa3',
+    formula: 'HOCl'
+  },
+  HClO2: {
+    key: 'HClO2',
+    label: 'HClO₂',
+    display: 'Chlorous acid',
+    phase: 'liquid',
+    density: 1.28,
+    miscibleGroup: 'water',
+    atomEls: ['H', 'O', 'Cl', 'O'],
+    bonds: [
+      { a: 0, b: 1, order: 1, rest: 28 },
+      { a: 1, b: 2, order: 1, rest: 31 },
+      { a: 2, b: 3, order: 2, rest: 31 }
+    ],
+    angleConstraints: [
+      { center: 1, a: 0, b: 2, angle: 104 * Math.PI / 180 },
+      { center: 2, a: 1, b: 3, angle: 108 * Math.PI / 180 }
+    ],
+    color: '#b0e39a',
+    formula: 'HClO₂'
+  },
+  HClO3: {
+    key: 'HClO3',
+    label: 'HClO₃',
+    display: 'Chloric acid',
+    phase: 'liquid',
+    density: 1.36,
+    miscibleGroup: 'water',
+    atomEls: ['H', 'O', 'Cl', 'O', 'O'],
+    bonds: [
+      { a: 0, b: 1, order: 1, rest: 28 },
+      { a: 1, b: 2, order: 1, rest: 31 },
+      { a: 2, b: 3, order: 2, rest: 31 },
+      { a: 2, b: 4, order: 2, rest: 31 }
+    ],
+    angleConstraints: [
+      { center: 1, a: 0, b: 2, angle: 104 * Math.PI / 180 },
+      { center: 2, a: 1, b: 3, angle: 106 * Math.PI / 180 },
+      { center: 2, a: 1, b: 4, angle: 106 * Math.PI / 180 },
+      { center: 2, a: 3, b: 4, angle: 112 * Math.PI / 180 }
+    ],
+    color: '#a6d88f',
+    formula: 'HClO₃'
+  },
+  HClO4: {
+    key: 'HClO4',
+    label: 'HClO₄',
+    display: 'Perchloric acid',
+    phase: 'liquid',
+    density: 1.67,
+    miscibleGroup: 'water',
+    atomEls: ['H', 'O', 'Cl', 'O', 'O', 'O'],
+    bonds: [
+      { a: 0, b: 1, order: 1, rest: 28 },
+      { a: 1, b: 2, order: 1, rest: 31 },
+      { a: 2, b: 3, order: 2, rest: 31 },
+      { a: 2, b: 4, order: 2, rest: 31 },
+      { a: 2, b: 5, order: 2, rest: 31 }
+    ],
+    angleConstraints: [
+      { center: 1, a: 0, b: 2, angle: 104 * Math.PI / 180 },
+      { center: 2, a: 1, b: 3, angle: 109.5 * Math.PI / 180 },
+      { center: 2, a: 1, b: 4, angle: 109.5 * Math.PI / 180 },
+      { center: 2, a: 1, b: 5, angle: 109.5 * Math.PI / 180 },
+      { center: 2, a: 3, b: 4, angle: 109.5 * Math.PI / 180 },
+      { center: 2, a: 3, b: 5, angle: 109.5 * Math.PI / 180 },
+      { center: 2, a: 4, b: 5, angle: 109.5 * Math.PI / 180 }
+    ],
+    color: '#9dcd87',
+    formula: 'HClO₄'
   },
   CO: {
     key: 'CO',
@@ -1898,6 +2059,7 @@ const world = {
   pressureAtm: 1,
   heatPulseC: 0,
   heatDoseC: 180,
+  stirStrength: 1.8,
   timeScale: 1,
   time: 0,
   molecules: [],
@@ -1955,6 +2117,10 @@ const NAMED_FORMULAS = {
   H2O: 'Water',
   H2O2: 'Hydrogen peroxide',
   HCl: 'Hydrogen chloride',
+  HOCl: 'Hypochlorous acid',
+  HClO2: 'Chlorous acid',
+  HClO3: 'Chloric acid',
+  HClO4: 'Perchloric acid',
   CH4: 'Methane',
   CH3Cl: 'Chloromethane',
   CH2Cl2: 'Dichloromethane',
@@ -1980,6 +2146,10 @@ const FORMULA_META = {
   CO: { phase: 'gas', density: 1.25, miscibleGroup: 'gas', color: '#c2b6b0' },
   CO2: { phase: 'gas', density: 1.98, miscibleGroup: 'gas', color: '#c9c3be' },
   HCl: { phase: 'gas', density: 1.49, miscibleGroup: 'gas', color: '#a9e9b0' },
+  HOCl: { phase: 'liquid', density: 1.17, miscibleGroup: 'water', color: '#bcefa3' },
+  HClO2: { phase: 'liquid', density: 1.28, miscibleGroup: 'water', color: '#b0e39a' },
+  HClO3: { phase: 'liquid', density: 1.36, miscibleGroup: 'water', color: '#a6d88f' },
+  HClO4: { phase: 'liquid', density: 1.67, miscibleGroup: 'water', color: '#9dcd87' },
   H2O: { phase: 'liquid', density: 1.0, miscibleGroup: 'water', color: '#6fc3ff' },
   H2O2: { phase: 'liquid', density: 1.45, miscibleGroup: 'water', color: '#a5d7ff' },
   CH4: { phase: 'gas', density: 0.66, miscibleGroup: 'gas', color: '#9cc4ff' },
@@ -2058,6 +2228,8 @@ const EVAPORATION_CONFIG = {
 };
 const AQUEOUS_ION_PROFILES = {
   HCl: { ions: { 'H3O+': 1, 'Cl-': 1 }, strength: 'strong-acid' },
+  HClO3: { ions: { 'H3O+': 1, 'ClO3-': 1 }, strength: 'strong-acid' },
+  HClO4: { ions: { 'H3O+': 1, 'ClO4-': 1 }, strength: 'strong-acid' },
   NaOH: { ions: { 'Na+': 1, 'OH-': 1 }, strength: 'strong-base' },
   NaCl: { ions: { 'Na+': 1, 'Cl-': 1 }, strength: 'strong-electrolyte' },
   NaHCO3: { ions: { 'Na+': 1, 'HCO3-': 1 }, strength: 'buffer' },
@@ -2066,6 +2238,8 @@ const AQUEOUS_ION_PROFILES = {
   NaC2H3O2: { ions: { 'Na+': 1, 'CH3COO-': 1 }, strength: 'basic-salt' }
 };
 const WEAK_AQUEOUS_ACIDS = {
+  HOCl: { acidUnits: 0.18, ionLabel: 'OCl-' },
+  HClO2: { acidUnits: 0.42, ionLabel: 'ClO2-' },
   HCOOH: { acidUnits: 0.34, ionLabel: 'HCOO-' },
   CH3COOH: { acidUnits: 0.16, ionLabel: 'CH3COO-' },
   CO2: { acidUnits: 0.12, note: 'carbonic-acid equivalent' }
@@ -2094,6 +2268,12 @@ const FALLBACK_REACTION_DATA = {
     H2O2: 'Can form and decompose in scripted thermal rules.',
     Cl2: 'Participates in scripted hydrogen chlorination.',
     HCl: 'Scripted hydrogen chloride product.',
+    HOCl: 'Reactive oxychlorine acid formed from chlorine and water.',
+    HClO2: 'Intermediate oxychlorine acid in the oxidation ladder.',
+    HClO3: 'Strong oxychlorine acid in the higher oxidation states.',
+    HClO4: 'Most oxidized oxychlorine acid in the current rule set.',
+    CH3CHO: 'Aldehyde intermediate that can oxidize to acetic acid.',
+    CH3COOH: 'Weak acid product from acetaldehyde oxidation.',
     'atom-C': 'Scripted carbon oxidation feedstock.',
     'atom-N': 'Reserved for future nitrogen chemistry.'
   },
@@ -2165,6 +2345,17 @@ const FALLBACK_REACTION_DATA = {
       note: 'Gas-phase halogenation.'
     },
     {
+      id: 'chlorine_hydrolysis',
+      name: 'Chlorine Hydrolysis',
+      reactants: [{ type: 'Cl2', count: 1 }, { type: 'H2O', count: 1 }],
+      products: [{ type: 'HOCl', count: 1 }, { type: 'HCl', count: 1 }],
+      conditions: { tempMinC: -5, tempMaxC: 120, proximity: 145 },
+      kinetics: { progressPerSecond: 0.55, contactThreshold: 0.95, decayPerSecond: 1.2, drift: 0.05 },
+      thermalDeltaC: 22,
+      displayEquation: 'Cl2 + H2O -> HOCl + HCl',
+      note: 'Simplified aqueous chlorine disproportionation.'
+    },
+    {
       id: 'sodium_water_reaction',
       name: 'Sodium Water Reaction',
       reactants: [{ type: 'atom-Na', count: 2 }, { type: 'H2O', count: 2 }],
@@ -2185,6 +2376,50 @@ const FALLBACK_REACTION_DATA = {
       thermalDeltaC: 34,
       displayEquation: 'HCl + NaOH -> NaCl + H2O',
       note: 'Simplified neutralization pathway.'
+    },
+    {
+      id: 'acetaldehyde_oxidation',
+      name: 'Acetaldehyde Oxidation',
+      reactants: [{ type: 'CH3CHO', count: 1 }, { type: 'atom-O', count: 1 }],
+      products: [{ type: 'CH3COOH', count: 1 }],
+      conditions: { tempMinC: 25, tempMaxC: 840, proximity: 115 },
+      kinetics: { progressPerSecond: 0.72, contactThreshold: 0.72, decayPerSecond: 1.25, drift: 0.035 },
+      thermalDeltaC: 46,
+      displayEquation: 'CH3CHO + O -> CH3COOH',
+      note: 'Aldehyde oxidation toward a weak carboxylic acid.'
+    },
+    {
+      id: 'hypochlorous_oxidation',
+      name: 'Hypochlorous Acid Oxidation',
+      reactants: [{ type: 'HOCl', count: 1 }, { type: 'atom-O', count: 1 }],
+      products: [{ type: 'HClO2', count: 1 }],
+      conditions: { tempMinC: 10, tempMaxC: 480, proximity: 120, phase: 'liquid' },
+      kinetics: { progressPerSecond: 0.52, contactThreshold: 0.82, decayPerSecond: 1.1, drift: 0.05 },
+      thermalDeltaC: 18,
+      displayEquation: 'HOCl + O -> HClO2',
+      note: 'Stepwise oxychlorine oxidation in the water phase.'
+    },
+    {
+      id: 'chlorous_oxidation',
+      name: 'Chlorous Acid Oxidation',
+      reactants: [{ type: 'HClO2', count: 1 }, { type: 'atom-O', count: 1 }],
+      products: [{ type: 'HClO3', count: 1 }],
+      conditions: { tempMinC: 20, tempMaxC: 520, proximity: 120, phase: 'liquid' },
+      kinetics: { progressPerSecond: 0.48, contactThreshold: 0.86, decayPerSecond: 1.08, drift: 0.05 },
+      thermalDeltaC: 16,
+      displayEquation: 'HClO2 + O -> HClO3',
+      note: 'Further oxidation along the oxychlorine acid ladder.'
+    },
+    {
+      id: 'chloric_oxidation',
+      name: 'Chloric Acid Oxidation',
+      reactants: [{ type: 'HClO3', count: 1 }, { type: 'atom-O', count: 1 }],
+      products: [{ type: 'HClO4', count: 1 }],
+      conditions: { tempMinC: 30, tempMaxC: 560, proximity: 125, phase: 'liquid' },
+      kinetics: { progressPerSecond: 0.44, contactThreshold: 0.9, decayPerSecond: 1.05, drift: 0.05 },
+      thermalDeltaC: 14,
+      displayEquation: 'HClO3 + O -> HClO4',
+      note: 'Highest oxidation step for the current oxychlorine pathway.'
     },
     {
       id: 'ozone_formation',
@@ -2221,13 +2456,26 @@ function getVesselRect() {
   const w = window.innerWidth;
   const h = window.innerHeight;
   const sideW = Math.min(360, w - 28) + 28;
-  const bottomH = 84;
+  const compactHud = w <= 1100;
+
+  if (compactHud) {
+    const bottomH = 84;
+
+    return {
+      x: Math.max(sideW + 18, 250),
+      y: 28,
+      w: Math.max(300, w - sideW - 32),
+      h: Math.max(240, h - bottomH - 42)
+    };
+  }
+
+  const rightPanelW = 368;
 
   return {
     x: Math.max(sideW + 18, 250),
     y: 28,
-    w: Math.max(300, w - sideW - 32),
-    h: Math.max(240, h - bottomH - 42)
+    w: Math.max(300, w - sideW - rightPanelW - 22),
+    h: Math.max(240, h - 42)
   };
 }
 
@@ -2284,6 +2532,28 @@ function buildAtomsForSpecies(type, cx, cy) {
     atoms[0].x = cx;      atoms[0].y = cy;
     atoms[1].x = cx - 22; atoms[1].y = cy + 14;
     atoms[2].x = cx + 22; atoms[2].y = cy + 14;
+  } else if (type === 'HOCl') {
+    atoms[0].x = cx - 28; atoms[0].y = cy + 6;
+    atoms[1].x = cx - 2;  atoms[1].y = cy;
+    atoms[2].x = cx + 30; atoms[2].y = cy + 10;
+  } else if (type === 'HClO2') {
+    atoms[0].x = cx - 42; atoms[0].y = cy + 10;
+    atoms[1].x = cx - 15; atoms[1].y = cy + 3;
+    atoms[2].x = cx + 12; atoms[2].y = cy;
+    atoms[3].x = cx + 38; atoms[3].y = cy - 18;
+  } else if (type === 'HClO3') {
+    atoms[0].x = cx - 44; atoms[0].y = cy + 12;
+    atoms[1].x = cx - 18; atoms[1].y = cy + 4;
+    atoms[2].x = cx + 8;  atoms[2].y = cy;
+    atoms[3].x = cx + 36; atoms[3].y = cy - 20;
+    atoms[4].x = cx + 34; atoms[4].y = cy + 20;
+  } else if (type === 'HClO4') {
+    atoms[0].x = cx - 48; atoms[0].y = cy + 14;
+    atoms[1].x = cx - 22; atoms[1].y = cy + 4;
+    atoms[2].x = cx + 4;  atoms[2].y = cy;
+    atoms[3].x = cx + 34; atoms[3].y = cy - 22;
+    atoms[4].x = cx + 38; atoms[4].y = cy + 2;
+    atoms[5].x = cx + 26; atoms[5].y = cy + 28;
   } else if (type === 'H2O2') {
     atoms[0].x = cx - 36; atoms[0].y = cy + 2;
     atoms[1].x = cx - 11; atoms[1].y = cy - 9;
@@ -4345,9 +4615,11 @@ function updateThermalLabels() {
   const max = Number(heatSlider.max);
   const fill = ((world.temperatureC - min) / (max - min)) * 100;
   const doseFill = ((Math.abs(world.heatDoseC) - Number(heatDoseSlider.min)) / (Number(heatDoseSlider.max) - Number(heatDoseSlider.min))) * 100;
+  const stirFill = ((world.stirStrength - Number(stirStrengthSlider.min)) / (Number(stirStrengthSlider.max) - Number(stirStrengthSlider.min))) * 100;
   const pressureFill = ((world.pressureAtm - Number(pressureSlider.min)) / (Number(pressureSlider.max) - Number(pressureSlider.min))) * 100;
   heatSlider.style.setProperty('--fill', `${clamp(fill, 0, 100)}%`);
   heatDoseSlider.style.setProperty('--fill', `${clamp(doseFill, 0, 100)}%`);
+  stirStrengthSlider.style.setProperty('--fill', `${clamp(stirFill, 0, 100)}%`);
   pressureSlider.style.setProperty('--fill', `${clamp(pressureFill, 0, 100)}%`);
   heatLabel.textContent = `Base: ${c}°C / ${f}°F / ${k}K • Effective: ${ambientC}°C / ${ambientF}°F / ${ambientK}K`;
   pressureSlider.value = String(world.pressureAtm);
@@ -4356,7 +4628,9 @@ function updateThermalLabels() {
   tempUnitSelect.value = world.ui.tempInputUnit;
   heatDoseLabel.textContent = 'Shot strength';
   heatDoseValue.textContent = `${Math.abs(Math.round(world.heatDoseC))}°C`;
-  const stirringText = world.stirring.timeLeft > 0 ? ` • Stirring ${world.stirring.timeLeft.toFixed(1)}s` : '';
+  stirStrengthLabel.textContent = 'Stir strength';
+  stirStrengthValue.textContent = `${world.stirStrength.toFixed(1)}x`;
+  const stirringText = world.stirring.timeLeft > 0 ? ` • Stirring ${world.stirring.timeLeft.toFixed(1)}s @ ${world.stirring.power.toFixed(1)}x` : '';
   const waterText = waterChem ? ` • pH ${waterChem.pH.toFixed(1)}` : '';
   simLabel.textContent = `Base ${c}°C • Offset ${formatThermalDelta(pulse) || '0°C'} • Effective ${ambientC}°C • ${effectivePressureAtm.toFixed(2)} atm${waterText} • ${world.timeScale}x speed${stirringText}`;
   timeScaleBtn.textContent = `Time ${world.timeScale}x`;
@@ -4371,10 +4645,10 @@ function cycleTimeScale() {
   updateThermalLabels();
 }
 
-function startStirring(duration = 5.5, power = 1) {
+function startStirring(duration = 6.8, power = world.stirStrength) {
   world.stirring.timeLeft = Math.max(world.stirring.timeLeft, duration);
   world.stirring.power = Math.max(world.stirring.power, power);
-  addReactionLog('tool', 'Stirrer engaged');
+  addReactionLog('tool', `Stirrer engaged at ${power.toFixed(1)}x`);
   updateThermalLabels();
 }
 
@@ -4389,9 +4663,9 @@ function applyStirring(dt) {
   const b = world.bounds;
   const cx = b.x + b.w * 0.5;
   const cy = b.y + b.h * 0.58;
-  const swirl = (0.065 + world.stirring.power * 0.030) * dt * 60;
-  const inward = 0.0085 * dt * 60;
-  const verticalWave = Math.sin(world.time * 3.1) * 0.045 * dt * 60;
+  const swirl = (0.14 + world.stirring.power * 0.11) * dt * 60;
+  const inward = (0.018 + world.stirring.power * 0.006) * dt * 60;
+  const verticalWave = Math.sin(world.time * 3.1) * (0.08 + world.stirring.power * 0.022) * dt * 60;
 
   for (const mol of world.molecules) {
     if (!mol.alive) continue;
@@ -4403,14 +4677,15 @@ function applyStirring(dt) {
     const tangentialY = dx / radius;
     const radialX = -dx / radius;
     const radialY = -dy / radius;
-    const edgeBoost = clamp(radius / Math.max(1, b.w * 0.45), 0.35, 1.15);
-    const phaseBoost = mol.phase === 'liquid' ? 1.2 : (mol.phase === 'particle' ? 0.95 : 0.75);
+    const edgeBoost = clamp(radius / Math.max(1, b.w * 0.45), 0.45, 1.45);
+    const phaseBoost = mol.phase === 'liquid' ? 1.9 : (mol.phase === 'particle' ? 1.35 : 0.9);
+    const centerLift = clamp(1.25 - radius / Math.max(1, b.w * 0.42), 0.3, 1.15);
 
     for (const atom of mol.atoms) {
       atom.vx += tangentialX * swirl * edgeBoost * phaseBoost;
       atom.vy += tangentialY * swirl * edgeBoost * phaseBoost;
-      atom.vx += radialX * inward;
-      atom.vy += radialY * inward + verticalWave;
+      atom.vx += radialX * inward * phaseBoost;
+      atom.vy += radialY * inward * phaseBoost + verticalWave * centerLift * phaseBoost;
     }
   }
 
@@ -5485,6 +5760,11 @@ clearBtn.addEventListener('click', clearWorld);
 
 timeScaleBtn.addEventListener('click', cycleTimeScale);
 stirBtn.addEventListener('click', () => startStirring());
+
+stirStrengthSlider.addEventListener('input', (e) => {
+  world.stirStrength = clamp(Number(e.target.value) || world.stirStrength, Number(stirStrengthSlider.min), Number(stirStrengthSlider.max));
+  updateThermalLabels();
+});
 
 heatPulseBtn.addEventListener('click', () => {
   const cx = world.bounds ? world.bounds.x + world.bounds.w * 0.5 : window.innerWidth * 0.5;
