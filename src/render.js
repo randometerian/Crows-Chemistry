@@ -57,7 +57,7 @@ function drawVessel() {
         ? ` + ${layer.dissolvedTypes.slice(0, 3).map(getSpeciesDisplayLabel).join(', ')}${layer.dissolvedTypes.length > 3 ? '...' : ''}`
         : '';
       const chemistryLabel = layer.chemistry
-        ? ` • pH ${layer.chemistry.pH.toFixed(1)}${layer.chemistry.majorIons.length ? ` • ${layer.chemistry.majorIons.slice(0, 2).map(entry => formatIonLabel(entry.ion)).join(', ')}` : ''}`
+        ? ` • ${layer.chemistry.chemistryLabel}${layer.chemistry.majorIons.length ? ` • ${layer.chemistry.majorIons.slice(0, 2).map(entry => formatIonLabel(entry.ion)).join(', ')}` : ''}`
         : '';
       if (layer.h >= 18) {
         ctx.fillStyle = 'rgba(231,237,245,.68)';

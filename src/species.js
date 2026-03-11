@@ -1681,10 +1681,8 @@ function formatIonLabel(ion) {
     .replace('-', '⁻');
 }
 
-function getWaterChemistrySnapshot() {
-  const aqueous = world.molecules.filter(isWaterPhaseMolecule);
-  if (!aqueous.length) return null;
-
+function buildLiquidChemistrySnapshot(liquids, options = {}) {
+  if (!liquids.length) return null;
   const speciesCounts = {};
   const ionCounts = {};
   let waterCount = 0;
@@ -1692,7 +1690,7 @@ function getWaterChemistrySnapshot() {
   let baseUnits = 0;
   let conductivity = 0;
 
-  for (const mol of aqueous) {
+  for (const mol of liquids) {
     speciesCounts[mol.type] = (speciesCounts[mol.type] || 0) + 1;
     if (mol.type === 'H2O') waterCount += 1;
 
@@ -1723,16 +1721,31 @@ function getWaterChemistrySnapshot() {
     .sort((a, b) => speciesCounts[b] - speciesCounts[a]);
   const scale = Math.max(6, waterCount * 0.22 + dissolvedTypes.reduce((sum, type) => sum + speciesCounts[type], 0) * 0.9);
   const delta = (baseUnits - acidUnits) / scale;
-  const pH = clamp(7 + Math.sign(delta) * Math.log10(1 + Math.abs(delta) * 42) * 3.15, 0, 14);
+  const totalCount = liquids.length;
+  const waterFraction = totalCount > 0 ? waterCount / totalCount : 0;
+  const allowPH = options.forcePH || waterFraction >= 0.22;
+  const pH = allowPH
+    ? clamp(7 + Math.sign(delta) * Math.log10(1 + Math.abs(delta) * 42) * 3.15, 0, 14)
+    : null;
   const majorIons = Object.entries(ionCounts)
     .filter(([, count]) => count >= 0.4)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 4)
     .map(([ion, count]) => ({ ion, count }));
+  const acidityStrength = Math.abs(delta);
+  let acidityLabel = 'near-neutral';
+  if (delta <= -1.8) acidityLabel = 'strongly acidic';
+  else if (delta <= -0.9) acidityLabel = 'acidic';
+  else if (delta <= -0.3) acidityLabel = 'slightly acidic';
+  else if (delta >= 1.8) acidityLabel = 'strongly basic';
+  else if (delta >= 0.9) acidityLabel = 'basic';
+  else if (delta >= 0.3) acidityLabel = 'slightly basic';
+  if (acidityStrength < 0.08) acidityLabel = 'near-neutral';
 
   return {
-    aqueousCount: aqueous.length,
+    aqueousCount: liquids.length,
     waterCount,
+    waterFraction,
     speciesCounts,
     dissolvedTypes,
     ionCounts,
@@ -1741,8 +1754,17 @@ function getWaterChemistrySnapshot() {
     acidity: acidUnits,
     basicity: baseUnits,
     pH,
+    hasPH: pH != null,
+    acidityLabel,
+    chemistryLabel: pH != null ? `pH ${pH.toFixed(1)}` : acidityLabel,
     isCarbonated: (speciesCounts.CO2 || 0) > 0
   };
+}
+
+function getWaterChemistrySnapshot() {
+  const aqueous = world.molecules.filter(isWaterPhaseMolecule);
+  if (!aqueous.length) return null;
+  return buildLiquidChemistrySnapshot(aqueous, { forcePH: true });
 }
 
 function clearWorld() {
@@ -1778,6 +1800,7 @@ function moleculeCenter(mol) {
 }
 
 function getLiquidLayerKey(mol) {
+  if (mol.type === 'H2O' && mol.phase === 'liquid') return 'water';
   if (mol.dissolved) return DISSOLUTION_CONFIG[mol.type]?.solventGroup || mol.miscibleGroup || mol.type;
   return mol.type;
 }
@@ -1816,7 +1839,7 @@ function getLiquidLayerLayout() {
         density: spec?.density ?? sample?.density ?? 1.0,
         color: spec?.color || sample?.color || '#9bbcff',
         dissolvedTypes,
-        chemistry: layerKey === 'water' ? waterChemistry : null
+        chemistry: layerKey === 'water' ? waterChemistry : buildLiquidChemistrySnapshot(arr)
       };
     })
     .sort((a, b2) => a.density - b2.density);

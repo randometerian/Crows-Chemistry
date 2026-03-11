@@ -20,6 +20,8 @@ function updateThermalLabels() {
   const ambientK = Math.round(cToK(ambientC));
   const effectivePressureAtm = getEffectivePressureAtm();
   const waterChem = getWaterChemistrySnapshot();
+  const liquidLayout = getLiquidLayerLayout();
+  const primaryChem = liquidLayout.layers.find(layer => layer.chemistry)?.chemistry || null;
   const min = Number(heatSlider.min);
   const max = Number(heatSlider.max);
   const fill = ((world.temperatureC - min) / (max - min)) * 100;
@@ -52,7 +54,7 @@ function updateThermalLabels() {
   lightBandValue.textContent = getLightBand(world.light.band).label;
   const stirringText = world.stirring.timeLeft > 0 ? ` • Stirring ${world.stirring.timeLeft.toFixed(1)}s @ ${world.stirring.power.toFixed(1)}x` : '';
   const lightText = world.light.firing ? ` • ${getLightBand(world.light.band).label} beam @ ${world.light.power.toFixed(1)}x` : (world.ui.activeTool === 'light' ? ` • Light tool armed (${getLightBand(world.light.band).label})` : '');
-  const waterText = waterChem ? ` • pH ${waterChem.pH.toFixed(1)}` : '';
+  const waterText = primaryChem ? ` • ${primaryChem.chemistryLabel}` : '';
   simLabel.textContent = `Base ${c}°C • Offset ${formatThermalDelta(pulse) || '0°C'} • Effective ${ambientC}°C • ${effectivePressureAtm.toFixed(2)} atm${waterText} • ${world.timeScale}x speed${stirringText}${lightText}`;
   timeScaleBtn.textContent = `Time ${world.timeScale}x`;
   stirBtn.classList.toggle('active', world.stirring.timeLeft > 0);
@@ -60,7 +62,7 @@ function updateThermalLabels() {
   lightBtn.classList.toggle('active', world.ui.activeTool === 'light');
   lightBtn.textContent = world.ui.activeTool === 'light' ? 'Light Tool On' : 'Light Tool';
   canvas.style.cursor = world.ui.activeTool === 'light' ? 'crosshair' : 'default';
-  statusText.innerHTML = `${world.running ? 'Running' : 'Paused'}<br>${world.molecules.length} molecules<br>${ambientC}°C effective • ${effectivePressureAtm.toFixed(2)} atm${waterChem ? ` • pH ${waterChem.pH.toFixed(1)}` : ''}<br>${world.stats.reactions} reactions • heat +${Math.round(world.thermalStats.addedC)} / -${Math.round(world.thermalStats.removedC)}${world.ui.activeTool === 'light' ? `<br>${getLightBand(world.light.band).label} tool ${world.light.firing ? `firing @ ${world.light.power.toFixed(1)}x` : 'armed'}` : ''}`;
+  statusText.innerHTML = `${world.running ? 'Running' : 'Paused'}<br>${world.molecules.length} molecules<br>${ambientC}°C effective • ${effectivePressureAtm.toFixed(2)} atm${primaryChem ? ` • ${primaryChem.chemistryLabel}` : ''}<br>${world.stats.reactions} reactions • heat +${Math.round(world.thermalStats.addedC)} / -${Math.round(world.thermalStats.removedC)}${world.ui.activeTool === 'light' ? `<br>${getLightBand(world.light.band).label} tool ${world.light.firing ? `firing @ ${world.light.power.toFixed(1)}x` : 'armed'}` : ''}`;
 }
 
 function cycleTimeScale() {
@@ -281,24 +283,26 @@ function renderSceneTab() {
 
   const list = document.createElement('div');
   list.className = 'scroll';
-  const waterChem = getWaterChemistrySnapshot();
+  const liquidLayout = getLiquidLayerLayout();
 
-  if (waterChem) {
+  for (const layer of liquidLayout.layers) {
+    if (!layer.chemistry) continue;
+    const labelType = layer.layerKey === 'water' ? 'H2O' : layer.layerKey;
     const chemCard = document.createElement('div');
     chemCard.className = 'card';
     chemCard.innerHTML = `
       <div class="cardTop">
         <div class="cardTitle">
-          <strong>Aqueous Chemistry</strong>
-          <span>${waterChem.aqueousCount} water-phase molecule${waterChem.aqueousCount === 1 ? '' : 's'}</span>
+          <strong>${getSpeciesDisplayName(labelType)} chemistry</strong>
+          <span>${layer.count} liquid molecule${layer.count === 1 ? '' : 's'}</span>
         </div>
-        <div class="phaseTag">water</div>
+        <div class="phaseTag">${layer.layerKey === 'water' ? 'aqueous' : 'liquid'}</div>
       </div>
       <div class="inspectGrid">
-        <div class="kv"><span>pH</span><strong>${waterChem.pH.toFixed(1)}</strong></div>
-        <div class="kv"><span>Major ions</span><strong>${waterChem.majorIons.length ? waterChem.majorIons.map(entry => formatIonLabel(entry.ion)).join(', ') : 'none'}</strong></div>
-        <div class="kv"><span>Conductivity</span><strong>${waterChem.conductivity.toFixed(1)}</strong></div>
-        <div class="kv"><span>Carbonation</span><strong>${waterChem.isCarbonated ? 'present' : 'none'}</strong></div>
+        <div class="kv"><span>${layer.chemistry.hasPH ? 'pH' : 'Indicator'}</span><strong>${layer.chemistry.hasPH ? layer.chemistry.pH.toFixed(1) : layer.chemistry.acidityLabel}</strong></div>
+        <div class="kv"><span>Major ions</span><strong>${layer.chemistry.majorIons.length ? layer.chemistry.majorIons.map(entry => formatIonLabel(entry.ion)).join(', ') : 'none'}</strong></div>
+        <div class="kv"><span>Conductivity</span><strong>${layer.chemistry.conductivity.toFixed(1)}</strong></div>
+        <div class="kv"><span>Carbonation</span><strong>${layer.chemistry.isCarbonated ? 'present' : 'none'}</strong></div>
       </div>
     `;
     list.appendChild(chemCard);
