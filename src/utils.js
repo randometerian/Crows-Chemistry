@@ -6,9 +6,16 @@ const clearBtn = document.getElementById('clearBtn');
 const heatPulseBtn = document.getElementById('heatPulseBtn');
 const coolPulseBtn = document.getElementById('coolPulseBtn');
 const stirBtn = document.getElementById('stirBtn');
+const lightBtn = document.getElementById('lightBtn');
 const stirStrengthSlider = document.getElementById('stirStrengthSlider');
 const stirStrengthLabel = document.getElementById('stirStrengthLabel');
 const stirStrengthValue = document.getElementById('stirStrengthValue');
+const lightStrengthSlider = document.getElementById('lightStrengthSlider');
+const lightStrengthLabel = document.getElementById('lightStrengthLabel');
+const lightStrengthValue = document.getElementById('lightStrengthValue');
+const lightBandSlider = document.getElementById('lightBandSlider');
+const lightBandLabel = document.getElementById('lightBandLabel');
+const lightBandValue = document.getElementById('lightBandValue');
 const timeScaleBtn = document.getElementById('timeScaleBtn');
 const heatSlider = document.getElementById('heatSlider');
 const heatDoseSlider = document.getElementById('heatDoseSlider');
@@ -28,6 +35,15 @@ const observationCounter = document.getElementById('observationCounter');
 
 const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
 const TAU = Math.PI * 2;
+const LIGHT_BANDS = [
+  { id: 'radio', label: 'Radio', color: '#7db5ff', energy: 0, photochemical: false },
+  { id: 'microwave', label: 'Microwave', color: '#87d3ff', energy: 1, photochemical: false },
+  { id: 'infrared', label: 'Infrared', color: '#ffb37d', energy: 2, photochemical: false },
+  { id: 'visible', label: 'Visible', color: '#fff0b0', energy: 3, photochemical: false },
+  { id: 'uv', label: 'UV', color: '#cda7ff', energy: 4, photochemical: true },
+  { id: 'xray', label: 'X-Ray', color: '#f2c5ff', energy: 5, photochemical: true },
+  { id: 'gamma', label: 'Gamma', color: '#ffd4f0', energy: 6, photochemical: true }
+];
 
 function resize() {
   canvas.width = Math.floor(window.innerWidth * DPR);
@@ -62,7 +78,7 @@ function getEffectivePressureAtm() {
   const volumeScale = clamp(420000 / Math.max(180000, area), 0.7, 1.7);
   const tempScale = clamp(cToK(getEffectiveTemperatureC()) / 298.15, 0.45, 5.5);
   const gasContribution = getGasMoleculeCount() * 0.035 * tempScale * volumeScale;
-  return clamp(world.pressureAtm + gasContribution, 0.05, 12);
+  return clamp(world.pressureAtm + gasContribution, 0.05, 150);
 }
 function formatThermalDelta(deltaC) {
   if (!Number.isFinite(deltaC) || Math.abs(deltaC) < 0.5) return '';
@@ -110,6 +126,12 @@ function colorWithAlpha(hex, alpha) {
 }
 function pairKey(elA, elB) {
   return [elA, elB].sort().join('-');
+}
+function pointInRect(point, rect) {
+  return !!rect && point.x >= rect.x && point.x <= rect.x + rect.w && point.y >= rect.y && point.y <= rect.y + rect.h;
+}
+function getLightBand(value = world.light.band) {
+  return LIGHT_BANDS.find(entry => entry.id === value) || LIGHT_BANDS[4];
 }
 function toSubscript(num) {
   return String(num).split('').map(d => SUBSCRIPT[d] || d).join('');
@@ -190,7 +212,6 @@ const THERMAL_RULE_DEFAULTS = {
   haloform_bleach_acetone: 18,
   water_combustion: 220,
   methane_combustion: 320,
-  peroxide_formation: -28,
   peroxide_decomposition: 88,
   sodium_water_reaction: 180,
   hydrogen_chlorination: 145,
@@ -201,10 +222,7 @@ const THERMAL_RULE_DEFAULTS = {
   ozone_formation: -18,
   ozone_decomposition: 36,
   atomic_water_assembly: 95,
-  acetaldehyde_oxidation: 46,
-  hypochlorous_oxidation: 18,
-  chlorous_oxidation: 16,
-  chloric_oxidation: 14
+  acetaldehyde_oxidation: 46
 };
 
 function normalizeReactionData(data) {

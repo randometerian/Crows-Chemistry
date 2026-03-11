@@ -5,6 +5,7 @@ const world = {
   heatPulseC: 0,
   heatDoseC: 180,
   stirStrength: 1.8,
+  lightStrength: 1.2,
   timeScale: 1,
   time: 0,
   molecules: [],
@@ -16,6 +17,18 @@ const world = {
   stirring: {
     timeLeft: 0,
     power: 0
+  },
+  light: {
+    timeLeft: 0,
+    power: 0,
+    rays: [],
+    firing: false,
+    pointerId: null,
+    source: null,
+    target: null,
+    band: 'uv',
+    travel: 0,
+    maxTravel: 0
   },
   reactionData: {
     speciesHints: {},
@@ -33,6 +46,8 @@ const world = {
     lastRenderedTab: 'library',
     libraryFilter: 'all',
     search: '',
+    activeTool: 'select',
+    editingTempInput: false,
     tempInputUnit: 'C',
     scrollTopByTab: {
       library: 0,
@@ -76,8 +91,20 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
+function setActiveTool(tool) {
+  world.ui.activeTool = tool;
+  world.dragging.mol = null;
+  if (tool !== 'light') stopLightBeam();
+  updateThermalLabels();
+}
+
 canvas.addEventListener('pointerdown', (e) => {
   const p = pointerPos(e);
+  if (world.ui.activeTool === 'light' && pointInRect(p, world.bounds)) {
+    canvas.setPointerCapture?.(e.pointerId);
+    startLightBeam(e.pointerId, p);
+    return;
+  }
   const hit = findTopMoleculeAt(p.x, p.y);
 
   if (!hit) {
@@ -100,6 +127,10 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 
 window.addEventListener('pointermove', (e) => {
+  if (world.light.firing && e.pointerId === world.light.pointerId) {
+    updateLightBeamTarget(pointerPos(e));
+    return;
+  }
   if (!world.dragging.mol) return;
   const p = pointerPos(e);
   moveMoleculeCenterTo(
@@ -109,7 +140,10 @@ window.addEventListener('pointermove', (e) => {
   );
 });
 
-window.addEventListener('pointerup', () => {
+window.addEventListener('pointerup', (e) => {
+  if (world.light.firing && e.pointerId === world.light.pointerId) {
+    stopLightBeam();
+  }
   world.dragging.mol = null;
 });
 
@@ -120,6 +154,14 @@ document.querySelectorAll('.tabBtn').forEach(btn => {
     syncTabButtons();
     markSidebarDirty();
     renderSidebar();
+  });
+});
+
+document.querySelectorAll('.controlToggle').forEach(toggle => {
+  toggle.addEventListener('click', () => {
+    const group = toggle.closest('.controlGroup');
+    if (!group) return;
+    group.classList.toggle('open');
   });
 });
 
@@ -140,9 +182,23 @@ clearBtn.addEventListener('click', clearWorld);
 
 timeScaleBtn.addEventListener('click', cycleTimeScale);
 stirBtn.addEventListener('click', () => startStirring());
+lightBtn.addEventListener('click', () => {
+  setActiveTool(world.ui.activeTool === 'light' ? 'select' : 'light');
+});
 
 stirStrengthSlider.addEventListener('input', (e) => {
   world.stirStrength = clamp(Number(e.target.value) || world.stirStrength, Number(stirStrengthSlider.min), Number(stirStrengthSlider.max));
+  updateThermalLabels();
+});
+
+lightStrengthSlider.addEventListener('input', (e) => {
+  world.lightStrength = clamp(Number(e.target.value) || world.lightStrength, Number(lightStrengthSlider.min), Number(lightStrengthSlider.max));
+  updateThermalLabels();
+});
+
+lightBandSlider.addEventListener('input', (e) => {
+  const index = clamp(Math.round(Number(e.target.value) || 0), Number(lightBandSlider.min), Number(lightBandSlider.max));
+  world.light.band = LIGHT_BANDS[index]?.id || 'uv';
   updateThermalLabels();
 });
 
@@ -182,7 +238,7 @@ tempUnitSelect.addEventListener('change', (e) => {
   updateThermalLabels();
 });
 
-tempInput.addEventListener('change', () => {
+function commitTempInputValue() {
   const entered = Number(tempInput.value);
   if (!Number.isFinite(entered)) {
     updateThermalLabels();
@@ -192,6 +248,21 @@ tempInput.addEventListener('change', () => {
   const max = Number(heatSlider.max);
   world.temperatureC = clamp(selectedUnitToCelsius(entered), min, max);
   updateThermalLabels();
+}
+
+tempInput.addEventListener('focus', () => {
+  world.ui.editingTempInput = true;
+});
+
+tempInput.addEventListener('blur', () => {
+  world.ui.editingTempInput = false;
+  commitTempInputValue();
+});
+
+tempInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    tempInput.blur();
+  }
 });
 
 async function loadObservationCounter() {

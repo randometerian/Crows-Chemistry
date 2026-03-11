@@ -830,6 +830,31 @@ function canRuleRunAtConditions(rule, ambientTempC, pressureAtm) {
   return true;
 }
 
+function participantsSatisfyPhotochemistry(rule, participants) {
+  if (!rule.conditions?.requiresLight) return true;
+  if (!world.light.firing) return false;
+
+  const requiredBandId = rule.conditions?.requiredLightBand || null;
+  if (requiredBandId) {
+    const currentBand = getLightBand(world.light.band);
+    const requiredBand = getLightBand(requiredBandId);
+    if (currentBand.energy < requiredBand.energy) return false;
+  }
+
+  const threshold = Math.max(0.1, Number(rule.conditions?.excitationMin) || 0.55);
+  const excitedTypes = Array.isArray(rule.conditions?.excitedTypes) && rule.conditions.excitedTypes.length
+    ? rule.conditions.excitedTypes
+    : [participants[0]?.type].filter(Boolean);
+
+  return excitedTypes.every(type =>
+    participants.some(mol =>
+      mol.type === type &&
+      (mol.photoExcitation || 0) >= threshold &&
+      (!requiredBandId || (mol.lastLightBand && getLightBand(mol.lastLightBand).energy >= getLightBand(requiredBandId).energy))
+    )
+  );
+}
+
 function findRuleParticipants(rule, anchor, reservedIds, spatialIndex = null) {
   const proximity = rule.conditions?.proximity ?? 140;
   const phase = rule.conditions?.phase || null;
@@ -962,6 +987,7 @@ function runScriptedReactions(dt, ambientTempC, pressureAtm) {
       anchor.reactionProgress[rule.id] = (anchor.reactionProgress[rule.id] || 0) * Math.max(0, 1 - decayPerSecond * dt);
       const participants = findRuleParticipants(rule, anchor, reservedIds, spatialIndex);
       if (!participants) continue;
+      if (!participantsSatisfyPhotochemistry(rule, participants)) continue;
 
       const center = {
         x: participants.reduce((sum, mol) => sum + moleculeCenter(mol).x, 0) / participants.length,

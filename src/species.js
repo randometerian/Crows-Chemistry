@@ -1140,14 +1140,14 @@ const FALLBACK_REACTION_DATA = {
     acetone: 'Scripted organic reagent for the haloform pathway.',
     CHCl3: 'Scripted haloform product.',
     H2: 'Participates in scripted oxidation and halogenation rules.',
-    O2: 'Participates in scripted oxidation and peroxide rules.',
-    H2O2: 'Can form and decompose in scripted thermal rules.',
+    O2: 'Participates in scripted combustion and radical oxygen rules.',
+    H2O2: 'Included for decomposition chemistry and related demonstrations.',
     Cl2: 'Participates in scripted hydrogen chlorination.',
     HCl: 'Scripted hydrogen chloride product.',
-    HOCl: 'Reactive oxychlorine acid formed from chlorine and water.',
-    HClO2: 'Intermediate oxychlorine acid in the oxidation ladder.',
-    HClO3: 'Strong oxychlorine acid in the higher oxidation states.',
-    HClO4: 'Most oxidized oxychlorine acid in the current rule set.',
+    HOCl: 'Hypochlorous acid formed from chlorine and water in the aqueous rule set.',
+    HClO2: 'Available for reference but not formed by the school-safe scripted rules.',
+    HClO3: 'Available for reference but not formed by the school-safe scripted rules.',
+    HClO4: 'Available for reference but not formed by the school-safe scripted rules.',
     CH3CHO: 'Aldehyde intermediate that can oxidize to acetic acid.',
     CH3COOH: 'Weak acid product from acetaldehyde oxidation.',
     'atom-C': 'Scripted carbon oxidation feedstock.',
@@ -1225,11 +1225,11 @@ const FALLBACK_REACTION_DATA = {
       name: 'Chlorine Hydrolysis',
       reactants: [{ type: 'Cl2', count: 1 }, { type: 'H2O', count: 1 }],
       products: [{ type: 'HOCl', count: 1 }, { type: 'HCl', count: 1 }],
-      conditions: { tempMinC: -5, tempMaxC: 120, proximity: 145 },
+      conditions: { tempMinC: -5, tempMaxC: 120, proximity: 145, phase: 'liquid' },
       kinetics: { progressPerSecond: 0.55, contactThreshold: 0.95, decayPerSecond: 1.2, drift: 0.05 },
       thermalDeltaC: 22,
       displayEquation: 'Cl2 + H2O -> HOCl + HCl',
-      note: 'Simplified aqueous chlorine disproportionation.'
+      note: 'Aqueous equilibrium-style chlorine hydrolysis in water.'
     },
     {
       id: 'sodium_water_reaction',
@@ -1265,39 +1265,6 @@ const FALLBACK_REACTION_DATA = {
       note: 'Aldehyde oxidation toward a weak carboxylic acid.'
     },
     {
-      id: 'hypochlorous_oxidation',
-      name: 'Hypochlorous Acid Oxidation',
-      reactants: [{ type: 'HOCl', count: 1 }, { type: 'atom-O', count: 1 }],
-      products: [{ type: 'HClO2', count: 1 }],
-      conditions: { tempMinC: 10, tempMaxC: 480, proximity: 120, phase: 'liquid' },
-      kinetics: { progressPerSecond: 0.52, contactThreshold: 0.82, decayPerSecond: 1.1, drift: 0.05 },
-      thermalDeltaC: 18,
-      displayEquation: 'HOCl + O -> HClO2',
-      note: 'Stepwise oxychlorine oxidation in the water phase.'
-    },
-    {
-      id: 'chlorous_oxidation',
-      name: 'Chlorous Acid Oxidation',
-      reactants: [{ type: 'HClO2', count: 1 }, { type: 'atom-O', count: 1 }],
-      products: [{ type: 'HClO3', count: 1 }],
-      conditions: { tempMinC: 20, tempMaxC: 520, proximity: 120, phase: 'liquid' },
-      kinetics: { progressPerSecond: 0.48, contactThreshold: 0.86, decayPerSecond: 1.08, drift: 0.05 },
-      thermalDeltaC: 16,
-      displayEquation: 'HClO2 + O -> HClO3',
-      note: 'Further oxidation along the oxychlorine acid ladder.'
-    },
-    {
-      id: 'chloric_oxidation',
-      name: 'Chloric Acid Oxidation',
-      reactants: [{ type: 'HClO3', count: 1 }, { type: 'atom-O', count: 1 }],
-      products: [{ type: 'HClO4', count: 1 }],
-      conditions: { tempMinC: 30, tempMaxC: 560, proximity: 125, phase: 'liquid' },
-      kinetics: { progressPerSecond: 0.44, contactThreshold: 0.9, decayPerSecond: 1.05, drift: 0.05 },
-      thermalDeltaC: 14,
-      displayEquation: 'HClO3 + O -> HClO4',
-      note: 'Highest oxidation step for the current oxychlorine pathway.'
-    },
-    {
       id: 'ozone_formation',
       name: 'Ozone Formation',
       reactants: [{ type: 'O2', count: 1 }, { type: 'atom-O', count: 1 }],
@@ -1306,7 +1273,7 @@ const FALLBACK_REACTION_DATA = {
       kinetics: { progressPerSecond: 0.8, contactThreshold: 0.6, decayPerSecond: 1.5, drift: 0.03 },
       thermalDeltaC: -24,
       displayEquation: 'O2 + O -> O3',
-      note: 'Oxygen radical association.'
+      note: 'Radical oxygen chemistry; real ozone formation also needs collisional energy transfer.'
     },
     {
       id: 'ozone_decomposition',
@@ -1608,6 +1575,7 @@ function addMolecule(type, x, y, options = {}) {
     angleConstraints: (spec.angleConstraints || []).map(a => ({ ...a })),
     shapeConstraints,
     dissolved: false,
+    photoExcitation: 0,
     reactionProgress: {},
     alive: true
   };
@@ -1624,18 +1592,22 @@ function addAtom(el, x, y, options = {}) {
   const cy = y ?? rand(bounds.y + 80, bounds.y + bounds.h - 80);
   const style = elementStyles[el];
   const select = options.select !== false;
+  const atomPhase = (el === 'O' || el === 'H' || el === 'Cl' || el === 'N') ? 'gas' : 'particle';
+  const atomDensity = atomPhase === 'gas' ? 0.12 : 0.5;
+  const atomGroup = atomPhase === 'gas' ? 'gas' : 'particle';
 
   const mol = {
     id: nextMolId++,
     type: `atom-${el}`,
     label: el,
     display: `${el} atom`,
-    phase: 'particle',
-    density: 0.5,
-    miscibleGroup: 'particle',
-    nativePhase: 'particle',
+    phase: atomPhase,
+    density: atomDensity,
+    miscibleGroup: atomGroup,
+    nativePhase: atomPhase,
     color: style.color,
     formula: el,
+    photoExcitation: 0,
     reactionProgress: {},
     atoms: [{
       id: nextAtomId++,
@@ -1650,6 +1622,7 @@ function addAtom(el, x, y, options = {}) {
       m: style.m,
       charge: 0,
       phase: Math.random() * 3,
+      excited: 0,
       spin: Math.random() * 2
     }],
     bonds: [],
@@ -1780,6 +1753,13 @@ function clearWorld() {
   world.heatPulseC = 0;
   world.stirring.timeLeft = 0;
   world.stirring.power = 0;
+  world.light.timeLeft = 0;
+  world.light.firing = false;
+  world.light.pointerId = null;
+  world.light.source = null;
+  world.light.target = null;
+  world.light.power = 0;
+  world.light.rays = [];
   world.thermalEvents = [];
   world.thermalStats.addedC = 0;
   world.thermalStats.removedC = 0;

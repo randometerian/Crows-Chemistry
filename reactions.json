@@ -1,20 +1,20 @@
 {
   "speciesHints": {
     "H2": "Hydrogen gas participates in the scripted combustion and halogenation rules.",
-    "O2": "Oxygen gas reacts with hydrogen under heat and can help form peroxide in the warm zone.",
+    "O2": "Oxygen gas supports combustion and radical oxygen chemistry in the simulator.",
     "Cl2": "Chlorine gas reacts with hydrogen in close gas-phase contact.",
     "HCl": "Hydrogen chloride is a scripted gas product in the hydrogen-chlorine rule set.",
-    "HOCl": "Hypochlorous acid forms when chlorine contacts water and can oxidize further.",
-    "HClO2": "Chlorous acid is an oxidized oxychlorine intermediate in the aqueous chlorine ladder.",
-    "HClO3": "Chloric acid is a stronger oxychlorine acid that can oxidize toward perchloric acid.",
-    "HClO4": "Perchloric acid is the most oxidized oxychlorine acid currently modeled.",
+    "HOCl": "Hypochlorous acid forms when chlorine contacts water in the aqueous chlorine rule.",
+    "HClO2": "Chlorous acid is available for reference but is not formed by the school-safe scripted rules.",
+    "HClO3": "Chloric acid is available for reference but is not formed by the school-safe scripted rules.",
+    "HClO4": "Perchloric acid is available for reference but is not formed by the school-safe scripted rules.",
     "CO": "Carbon monoxide is an intermediate oxide that can oxidize further into carbon dioxide.",
     "CO2": "Carbon dioxide is a stable combustion product from methane and carbon oxidation rules.",
     "NaCl": "Sodium chloride is produced by scripted ionic neutralization rules.",
     "NaOH": "Sodium hydroxide is a strong base produced from sodium-water contact and used in neutralization.",
     "NaOCl": "Sodium hypochlorite is modeled as bleach for the haloform pathway with acetone.",
     "H2O": "Water forms through the scripted hydrogen-oxygen combustion rule.",
-    "H2O2": "Hydrogen peroxide can form in a narrower warm oxygen-hydrogen window and decompose when overheated.",
+    "H2O2": "Hydrogen peroxide is included for decomposition chemistry and related demonstrations.",
     "CH4": "Methane is a simple fuel gas that combusts into carbon dioxide and water when heated with oxygen.",
     "CH3Cl": "Chloromethane is the first chlorinated methane intermediate in the halogenation chain.",
     "CH2Cl2": "Dichloromethane is a denser chlorinated solvent formed by further methane chlorination.",
@@ -170,31 +170,6 @@
       "note": "Hot gas-phase combustion pathway."
     },
     {
-      "id": "peroxide_formation",
-      "name": "Peroxide Formation Window",
-      "category": "oxidation",
-      "reactants": [
-        { "type": "H2", "count": 1 },
-        { "type": "O2", "count": 1 }
-      ],
-      "products": [
-        { "type": "H2O2", "count": 1 }
-      ],
-      "conditions": {
-        "tempMinC": 90,
-        "tempMaxC": 320,
-        "proximity": 130
-      },
-      "kinetics": {
-        "progressPerSecond": 0.45,
-        "contactThreshold": 0.9,
-        "decayPerSecond": 1.4,
-        "drift": 0.035
-      },
-      "displayEquation": "H2 + O2 -> H2O2",
-      "note": "A narrow warm-window side pathway."
-    },
-    {
       "id": "peroxide_decomposition",
       "name": "Peroxide Decomposition",
       "category": "decomposition",
@@ -285,7 +260,8 @@
       "conditions": {
         "tempMinC": -5,
         "tempMaxC": 120,
-        "proximity": 145
+        "proximity": 145,
+        "phase": "liquid"
       },
       "kinetics": {
         "progressPerSecond": 0.55,
@@ -294,7 +270,7 @@
         "drift": 0.05
       },
       "displayEquation": "Cl2 + H2O -> HOCl + HCl",
-      "note": "Simplified aqueous chlorine disproportionation."
+      "note": "Aqueous equilibrium-style chlorine hydrolysis in water."
     },
     {
       "id": "acid_base_neutralization",
@@ -384,7 +360,7 @@
       "conditions": {
         "tempMinC": -40,
         "tempMaxC": 700,
-        "proximity": 95
+        "proximity": 150
       },
       "kinetics": {
         "progressPerSecond": 0.8,
@@ -393,7 +369,7 @@
         "drift": 0.03
       },
       "displayEquation": "O2 + O -> O3",
-      "note": "Oxygen radical association."
+      "note": "Radical oxygen chemistry; real ozone formation also needs collisional energy transfer."
     },
     {
       "id": "ozone_decomposition",
@@ -486,17 +462,17 @@
       "conditions": {
         "tempMinC": 120,
         "tempMaxC": 420,
-        "pressureMinAtm": 2.5,
-        "proximity": 140
+        "pressureMinAtm": 50,
+        "proximity": 220
       },
       "kinetics": {
-        "progressPerSecond": 0.55,
-        "contactThreshold": 0.95,
+        "progressPerSecond": 0.82,
+        "contactThreshold": 0.52,
         "decayPerSecond": 1.1,
-        "drift": 0.05
+        "drift": 0.14
       },
       "displayEquation": "CO + 2 H2 -> CH3OH",
-      "note": "Pressure-assisted hydrogenation of carbon monoxide."
+      "note": "Industrial-style synthesis; real production needs high pressure and catalysts."
     },
     {
       "id": "methanol_oxidation",
@@ -587,18 +563,22 @@
         { "type": "HCl", "count": 1 }
       ],
       "conditions": {
-        "tempMinC": 70,
-        "tempMaxC": 1800,
-        "proximity": 150
+        "tempMinC": 10,
+        "tempMaxC": 320,
+        "proximity": 280,
+        "requiresLight": true,
+        "requiredLightBand": "uv",
+        "excitedTypes": ["Cl2"],
+        "excitationMin": 0.22
       },
       "kinetics": {
-        "progressPerSecond": 0.7,
-        "contactThreshold": 0.85,
+        "progressPerSecond": 1.1,
+        "contactThreshold": 0.42,
         "decayPerSecond": 1.2,
-        "drift": 0.04
+        "drift": 0.14
       },
       "displayEquation": "CH4 + Cl2 -> CH3Cl + HCl",
-      "note": "First methane chlorination step."
+      "note": "Photochemical radical chlorination; requires light to initiate chlorine radicals."
     },
     {
       "id": "dichloromethane_formation",
@@ -613,18 +593,22 @@
         { "type": "HCl", "count": 1 }
       ],
       "conditions": {
-        "tempMinC": 80,
-        "tempMaxC": 1900,
-        "proximity": 150
+        "tempMinC": 10,
+        "tempMaxC": 340,
+        "proximity": 280,
+        "requiresLight": true,
+        "requiredLightBand": "uv",
+        "excitedTypes": ["Cl2"],
+        "excitationMin": 0.22
       },
       "kinetics": {
-        "progressPerSecond": 0.68,
-        "contactThreshold": 0.88,
+        "progressPerSecond": 1.0,
+        "contactThreshold": 0.44,
         "decayPerSecond": 1.2,
-        "drift": 0.04
+        "drift": 0.14
       },
       "displayEquation": "CH3Cl + Cl2 -> CH2Cl2 + HCl",
-      "note": "Second methane chlorination step."
+      "note": "Photochemical radical chlorination step."
     },
     {
       "id": "chloroform_chain_formation",
@@ -639,96 +623,22 @@
         { "type": "HCl", "count": 1 }
       ],
       "conditions": {
-        "tempMinC": 95,
-        "tempMaxC": 2000,
-        "proximity": 155
+        "tempMinC": 10,
+        "tempMaxC": 360,
+        "proximity": 285,
+        "requiresLight": true,
+        "requiredLightBand": "uv",
+        "excitedTypes": ["Cl2"],
+        "excitationMin": 0.22
       },
       "kinetics": {
-        "progressPerSecond": 0.65,
-        "contactThreshold": 0.9,
+        "progressPerSecond": 0.95,
+        "contactThreshold": 0.46,
         "decayPerSecond": 1.15,
-        "drift": 0.04
+        "drift": 0.14
       },
       "displayEquation": "CH2Cl2 + Cl2 -> CHCl3 + HCl",
-      "note": "Third methane chlorination step."
-    },
-    {
-      "id": "hypochlorous_oxidation",
-      "name": "Hypochlorous Acid Oxidation",
-      "category": "oxidation",
-      "reactants": [
-        { "type": "HOCl", "count": 1 },
-        { "type": "atom-O", "count": 1 }
-      ],
-      "products": [
-        { "type": "HClO2", "count": 1 }
-      ],
-      "conditions": {
-        "tempMinC": 10,
-        "tempMaxC": 480,
-        "proximity": 120,
-        "phase": "liquid"
-      },
-      "kinetics": {
-        "progressPerSecond": 0.52,
-        "contactThreshold": 0.82,
-        "decayPerSecond": 1.1,
-        "drift": 0.05
-      },
-      "displayEquation": "HOCl + O -> HClO2",
-      "note": "Stepwise oxychlorine oxidation in the water phase."
-    },
-    {
-      "id": "chlorous_oxidation",
-      "name": "Chlorous Acid Oxidation",
-      "category": "oxidation",
-      "reactants": [
-        { "type": "HClO2", "count": 1 },
-        { "type": "atom-O", "count": 1 }
-      ],
-      "products": [
-        { "type": "HClO3", "count": 1 }
-      ],
-      "conditions": {
-        "tempMinC": 20,
-        "tempMaxC": 520,
-        "proximity": 120,
-        "phase": "liquid"
-      },
-      "kinetics": {
-        "progressPerSecond": 0.48,
-        "contactThreshold": 0.86,
-        "decayPerSecond": 1.08,
-        "drift": 0.05
-      },
-      "displayEquation": "HClO2 + O -> HClO3",
-      "note": "Further oxidation along the oxychlorine acid ladder."
-    },
-    {
-      "id": "chloric_oxidation",
-      "name": "Chloric Acid Oxidation",
-      "category": "oxidation",
-      "reactants": [
-        { "type": "HClO3", "count": 1 },
-        { "type": "atom-O", "count": 1 }
-      ],
-      "products": [
-        { "type": "HClO4", "count": 1 }
-      ],
-      "conditions": {
-        "tempMinC": 30,
-        "tempMaxC": 560,
-        "proximity": 125,
-        "phase": "liquid"
-      },
-      "kinetics": {
-        "progressPerSecond": 0.44,
-        "contactThreshold": 0.9,
-        "decayPerSecond": 1.05,
-        "drift": 0.05
-      },
-      "displayEquation": "HClO3 + O -> HClO4",
-      "note": "Highest oxidation step for the current oxychlorine pathway."
+      "note": "Photochemical radical chlorination step."
     },
     {
       "id": "carbon_tetrachloride_formation",
@@ -743,18 +653,22 @@
         { "type": "HCl", "count": 1 }
       ],
       "conditions": {
-        "tempMinC": 110,
-        "tempMaxC": 2200,
-        "proximity": 160
+        "tempMinC": 10,
+        "tempMaxC": 380,
+        "proximity": 290,
+        "requiresLight": true,
+        "requiredLightBand": "uv",
+        "excitedTypes": ["Cl2"],
+        "excitationMin": 0.22
       },
       "kinetics": {
-        "progressPerSecond": 0.62,
-        "contactThreshold": 0.95,
+        "progressPerSecond": 0.9,
+        "contactThreshold": 0.48,
         "decayPerSecond": 1.1,
-        "drift": 0.035
+        "drift": 0.14
       },
       "displayEquation": "CHCl3 + Cl2 -> CCl4 + HCl",
-      "note": "Final chlorination step to carbon tetrachloride."
+      "note": "Photochemical radical chlorination step."
     },
     {
       "id": "bicarbonate_formation",

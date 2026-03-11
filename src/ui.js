@@ -25,27 +25,42 @@ function updateThermalLabels() {
   const fill = ((world.temperatureC - min) / (max - min)) * 100;
   const doseFill = ((Math.abs(world.heatDoseC) - Number(heatDoseSlider.min)) / (Number(heatDoseSlider.max) - Number(heatDoseSlider.min))) * 100;
   const stirFill = ((world.stirStrength - Number(stirStrengthSlider.min)) / (Number(stirStrengthSlider.max) - Number(stirStrengthSlider.min))) * 100;
+  const lightFill = ((world.lightStrength - Number(lightStrengthSlider.min)) / (Number(lightStrengthSlider.max) - Number(lightStrengthSlider.min))) * 100;
+  const lightBandFill = ((LIGHT_BANDS.findIndex(entry => entry.id === world.light.band) - Number(lightBandSlider.min)) / (Number(lightBandSlider.max) - Number(lightBandSlider.min))) * 100;
   const pressureFill = ((world.pressureAtm - Number(pressureSlider.min)) / (Number(pressureSlider.max) - Number(pressureSlider.min))) * 100;
   heatSlider.style.setProperty('--fill', `${clamp(fill, 0, 100)}%`);
   heatDoseSlider.style.setProperty('--fill', `${clamp(doseFill, 0, 100)}%`);
   stirStrengthSlider.style.setProperty('--fill', `${clamp(stirFill, 0, 100)}%`);
+  lightStrengthSlider.style.setProperty('--fill', `${clamp(lightFill, 0, 100)}%`);
+  lightBandSlider.style.setProperty('--fill', `${clamp(lightBandFill, 0, 100)}%`);
   pressureSlider.style.setProperty('--fill', `${clamp(pressureFill, 0, 100)}%`);
   heatLabel.textContent = `Base: ${c}°C / ${f}°F / ${k}K • Effective: ${ambientC}°C / ${ambientF}°F / ${ambientK}K`;
   pressureSlider.value = String(world.pressureAtm);
   pressureLabel.textContent = `Pressure: ${effectivePressureAtm.toFixed(2)} atm • Base ${world.pressureAtm.toFixed(2)} atm • Gas ${getGasMoleculeCount()}`;
-  tempInput.value = String(Math.round(toSelectedUnitTemp(world.temperatureC)));
+  if (!world.ui.editingTempInput) {
+    tempInput.value = String(Math.round(toSelectedUnitTemp(world.temperatureC)));
+  }
   tempUnitSelect.value = world.ui.tempInputUnit;
   heatDoseLabel.textContent = 'Shot strength';
   heatDoseValue.textContent = `${Math.abs(Math.round(world.heatDoseC))}°C`;
   stirStrengthLabel.textContent = 'Stir strength';
   stirStrengthValue.textContent = `${world.stirStrength.toFixed(1)}x`;
+  lightStrengthLabel.textContent = 'Beam intensity';
+  lightStrengthValue.textContent = `${world.lightStrength.toFixed(1)}x`;
+  lightBandLabel.textContent = 'EM frequency';
+  lightBandSlider.value = String(Math.max(0, LIGHT_BANDS.findIndex(entry => entry.id === world.light.band)));
+  lightBandValue.textContent = getLightBand(world.light.band).label;
   const stirringText = world.stirring.timeLeft > 0 ? ` • Stirring ${world.stirring.timeLeft.toFixed(1)}s @ ${world.stirring.power.toFixed(1)}x` : '';
+  const lightText = world.light.firing ? ` • ${getLightBand(world.light.band).label} beam @ ${world.light.power.toFixed(1)}x` : (world.ui.activeTool === 'light' ? ` • Light tool armed (${getLightBand(world.light.band).label})` : '');
   const waterText = waterChem ? ` • pH ${waterChem.pH.toFixed(1)}` : '';
-  simLabel.textContent = `Base ${c}°C • Offset ${formatThermalDelta(pulse) || '0°C'} • Effective ${ambientC}°C • ${effectivePressureAtm.toFixed(2)} atm${waterText} • ${world.timeScale}x speed${stirringText}`;
+  simLabel.textContent = `Base ${c}°C • Offset ${formatThermalDelta(pulse) || '0°C'} • Effective ${ambientC}°C • ${effectivePressureAtm.toFixed(2)} atm${waterText} • ${world.timeScale}x speed${stirringText}${lightText}`;
   timeScaleBtn.textContent = `Time ${world.timeScale}x`;
   stirBtn.classList.toggle('active', world.stirring.timeLeft > 0);
   stirBtn.textContent = world.stirring.timeLeft > 0 ? 'Stirring' : 'Stir';
-  statusText.innerHTML = `${world.running ? 'Running' : 'Paused'}<br>${world.molecules.length} molecules<br>${ambientC}°C effective • ${effectivePressureAtm.toFixed(2)} atm${waterChem ? ` • pH ${waterChem.pH.toFixed(1)}` : ''}<br>${world.stats.reactions} reactions • heat +${Math.round(world.thermalStats.addedC)} / -${Math.round(world.thermalStats.removedC)}`;
+  lightBtn.classList.toggle('active', world.ui.activeTool === 'light');
+  lightBtn.textContent = world.ui.activeTool === 'light' ? 'Light Tool On' : 'Light Tool';
+  canvas.style.cursor = world.ui.activeTool === 'light' ? 'crosshair' : 'default';
+  statusText.innerHTML = `${world.running ? 'Running' : 'Paused'}<br>${world.molecules.length} molecules<br>${ambientC}°C effective • ${effectivePressureAtm.toFixed(2)} atm${waterChem ? ` • pH ${waterChem.pH.toFixed(1)}` : ''}<br>${world.stats.reactions} reactions • heat +${Math.round(world.thermalStats.addedC)} / -${Math.round(world.thermalStats.removedC)}${world.ui.activeTool === 'light' ? `<br>${getLightBand(world.light.band).label} tool ${world.light.firing ? `firing @ ${world.light.power.toFixed(1)}x` : 'armed'}` : ''}`;
 }
 
 function cycleTimeScale() {

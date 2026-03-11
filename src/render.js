@@ -130,20 +130,30 @@ function drawBond(a, b, order) {
 
 function drawAtom(atom, loneDots, t, selected = false) {
   const style = elementStyles[atom.el];
-  const shellR = style.r + 9;
+  const excitement = clamp(atom.excited || 0, 0, 1.4);
+  const shellR = style.r + 9 + excitement * 2.5;
 
   ctx.save();
 
+  if (excitement > 0.02) {
+    ctx.strokeStyle = `rgba(255,236,165,${0.20 + excitement * 0.22})`;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(atom.x, atom.y, style.r + 4 + excitement * 2, 0, TAU);
+    ctx.stroke();
+  }
+
   if (loneDots > 0) {
     ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--e').trim();
-    ctx.globalAlpha = 0.58;
+    ctx.globalAlpha = 0.58 + excitement * 0.12;
 
     for (let i = 0; i < loneDots; i++) {
-      const ang = t * 0.0011 + atom.phase + (i / loneDots) * TAU;
-      const ex = atom.x + Math.cos(ang) * shellR;
-      const ey = atom.y + Math.sin(ang) * shellR;
+      const ang = t * (0.0011 + excitement * 0.0013) + atom.phase + (i / loneDots) * TAU;
+      const wobble = 1 + Math.sin(t * 0.009 + atom.phase * 3 + i) * excitement * 0.22;
+      const ex = atom.x + Math.cos(ang) * shellR * wobble;
+      const ey = atom.y + Math.sin(ang) * shellR * wobble;
       ctx.beginPath();
-      ctx.arc(ex, ey, 1.45, 0, TAU);
+      ctx.arc(ex, ey, 1.45 + excitement * 0.35, 0, TAU);
       ctx.fill();
     }
   }
@@ -167,6 +177,48 @@ function drawAtom(atom, loneDots, t, selected = false) {
   ctx.textBaseline = 'middle';
   ctx.fillText(atom.el, atom.x, atom.y + 0.5);
 
+  ctx.restore();
+}
+
+function drawLightOverlay() {
+  if (!world.light.rays.length) return;
+
+  ctx.save();
+  if (world.light.source) {
+    const band = getLightBand(world.light.band);
+    ctx.fillStyle = colorWithAlpha(band.color, 0.9);
+    ctx.beginPath();
+    ctx.arc(world.light.source.x, world.light.source.y, 4.2, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = colorWithAlpha(band.color, 0.35);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(world.light.source.x, world.light.source.y, 7.5, 0, TAU);
+    ctx.stroke();
+  }
+  for (const ray of world.light.rays) {
+    if (!ray.length || ray.length <= 0.001) continue;
+    const visibleLength = Math.min(ray.length, world.light.travel || 0);
+    if (visibleLength <= 2) continue;
+    const endX = ray.start.x + ((ray.end.x - ray.start.x) / ray.length) * visibleLength;
+    const endY = ray.start.y + ((ray.end.y - ray.start.y) / ray.length) * visibleLength;
+    ctx.strokeStyle = colorWithAlpha(ray.color, 0.82);
+    ctx.lineWidth = Math.max(0.44, ray.visualWidth * 0.84);
+    ctx.lineCap = 'round';
+    ctx.setLineDash([36, 16]);
+    ctx.lineDashOffset = -(world.time * 104);
+    ctx.beginPath();
+    ctx.moveTo(ray.start.x, ray.start.y);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.lineDashOffset = 0;
+
+    ctx.fillStyle = colorWithAlpha(ray.color, 0.9);
+    ctx.beginPath();
+    ctx.arc(endX, endY, Math.max(0.72, ray.visualWidth * 0.62 + 0.18), 0, TAU);
+    ctx.fill();
+  }
   ctx.restore();
 }
 
@@ -253,6 +305,7 @@ function drawScene() {
   ctx.clearRect(0, 0, w, h);
   drawGrid(w, h);
   drawVessel();
+  drawLightOverlay();
 
   for (const mol of world.molecules) {
     drawMolecule(mol, now);

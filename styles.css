@@ -119,6 +119,7 @@
       justify-content:space-between;
       gap:12px;
       flex-wrap:wrap;
+      min-width:0;
     }
 
     .eyebrow{
@@ -133,6 +134,8 @@
 
     .headerStat{
       max-width:100%;
+      min-width:0;
+      flex:1 1 auto;
       padding:7px 10px;
       border:1px solid var(--border);
       border-radius:999px;
@@ -242,6 +245,7 @@
       display:grid;
       gap:12px;
       overflow:hidden;
+      min-width:0;
     }
 
     .scroll{
@@ -251,6 +255,7 @@
       display:grid;
       gap:10px;
       align-content:start;
+      min-width:0;
     }
 
     .card{
@@ -267,11 +272,13 @@
       align-items:flex-start;
       justify-content:space-between;
       gap:12px;
+      min-width:0;
     }
 
     .cardTitle{
       display:grid;
       gap:3px;
+      min-width:0;
     }
 
     .cardTitle strong{
@@ -377,19 +384,70 @@
       align-items:center;
       color:var(--muted);
       font-size:12px;
+      min-width:0;
     }
 
     .toolbar{
       display:flex;
       flex-direction:column;
-      gap:8px;
+      gap:10px;
       align-items:stretch;
+      min-height:0;
+      overflow:auto;
     }
 
-    .heatActionWrap{
+    .controlBar{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:8px;
+    }
+
+    .controlGroup{
       display:grid;
       gap:8px;
-      min-width:220px;
+      padding:10px;
+      border:1px solid var(--border);
+      border-radius:14px;
+      background:rgba(255,255,255,.02);
+    }
+
+    .controlToggle{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      width:100%;
+      min-height:34px;
+      padding:0;
+      border:0;
+      background:transparent;
+      color:var(--text);
+      font-size:13px;
+      font-weight:700;
+    }
+
+    .controlToggle:hover{
+      background:transparent;
+      border-color:transparent;
+    }
+
+    .controlChevron{
+      color:var(--muted);
+      font-size:18px;
+      line-height:1;
+      transition:transform .16s ease;
+    }
+
+    .controlGroup.open .controlChevron{
+      transform:rotate(45deg);
+    }
+
+    .controlBody{
+      display:none;
+      gap:8px;
+    }
+
+    .controlGroup.open .controlBody{
+      display:grid;
     }
 
     .heatActionRow{
@@ -406,6 +464,12 @@
     }
 
     .stirWrap{
+      display:grid;
+      gap:6px;
+      min-width:180px;
+    }
+
+    .lightWrap{
       display:grid;
       gap:6px;
       min-width:180px;
@@ -443,6 +507,8 @@
     .tempControls input,
     .tempControls select{
       appearance:none;
+      -webkit-appearance:none;
+      -moz-appearance:none;
       border:1px solid var(--border);
       background:rgba(255,255,255,.04);
       color:var(--text);
@@ -456,11 +522,37 @@
     .tempControls input{
       width:92px;
       text-align:right;
+      color-scheme:dark;
     }
 
     .tempControls select{
       width:56px;
       text-align:center;
+      color-scheme:dark;
+      background-image:
+        linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+        linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+      background-position:
+        calc(100% - 16px) 13px,
+        calc(100% - 11px) 13px;
+      background-size:5px 5px, 5px 5px;
+      background-repeat:no-repeat;
+      padding-right:22px;
+    }
+
+    .tempControls select option{
+      background:var(--bg2);
+      color:var(--text);
+    }
+
+    .tempControls input::-webkit-outer-spin-button,
+    .tempControls input::-webkit-inner-spin-button{
+      -webkit-appearance:none;
+      margin:0;
+    }
+
+    .tempControls input[type="number"]{
+      -moz-appearance:textfield;
     }
 
     input[type="range"]{
