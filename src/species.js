@@ -2045,15 +2045,24 @@ function getLiquidLayerLayout() {
         .sort((a, b2) => dissolvedCounts[b2] - dissolvedCounts[a]);
       const allSolid = arr.every(mol => mol.phase === 'solid');
       const allLiquid = arr.every(mol => mol.phase === 'liquid');
+      const averageDensity = arr.reduce((sum, mol) => sum + (mol.density || 1), 0) / Math.max(1, arr.length);
+      const boilType = layerKey === 'water' ? 'H2O' : sample.type;
+      const boilPointC = liquidMembers.length && EVAPORATION_CONFIG[boilType]
+        ? getPressureAdjustedBoilingPointC(boilType, world.pressureAtm)
+        : null;
+      const boilingIntensity = Number.isFinite(boilPointC)
+        ? clamp((getEffectiveTemperatureC() - boilPointC + 4) / 24, 0, 1.35)
+        : 0;
       return {
         layerKey,
         count: arr.length,
         liquidCount: liquidMembers.length,
         solidCount: arr.length - liquidMembers.length,
-        density: sample?.density ?? spec?.density ?? 1.0,
+        density: averageDensity || sample?.density || spec?.density || 1.0,
         color: spec?.color || sample?.color || '#9bbcff',
         dissolvedTypes,
         phaseTag: allSolid ? 'solid' : (allLiquid ? (layerKey === 'water' ? 'aqueous' : 'liquid') : 'condensed'),
+        boilingIntensity,
         chemistry: liquidMembers.length
           ? (layerKey === 'water' ? waterChemistry : buildLiquidChemistrySnapshot(liquidMembers))
           : null
@@ -2110,16 +2119,18 @@ function confineMoleculeToPhaseZone(mol, b, liquidLayout, dt) {
   let targetY = null;
   let softRange = null;
 
-  if (mol.phase === 'liquid') {
+  if (mol.phase === 'liquid' || mol.phase === 'solid') {
     const layer = liquidLayout.layers.find(entry => entry.layerKey === getLiquidLayerKey(mol));
     if (layer) {
       targetY = layer.centerY;
       softRange = {
-        min: layer.y - Math.max(18, layer.h * 0.35),
-        max: layer.y + layer.h + Math.max(18, layer.h * 0.35)
+        min: layer.y - Math.max(mol.phase === 'solid' ? 10 : 18, layer.h * (mol.phase === 'solid' ? 0.22 : 0.35)),
+        max: layer.y + layer.h + Math.max(mol.phase === 'solid' ? 10 : 18, layer.h * (mol.phase === 'solid' ? 0.22 : 0.35))
       };
-    } else if (liquidLayout.surfaceY != null) {
+    } else if (mol.phase === 'liquid' && liquidLayout.surfaceY != null) {
       minAllowedY = liquidLayout.surfaceY + radius;
+    } else if (mol.phase === 'solid') {
+      targetY = bottom - Math.max(radius + 10, b.h * 0.10);
     }
   } else if (mol.phase === 'gas') {
     const isDragged = world.dragging.mol && world.dragging.mol.id === mol.id;
@@ -2130,7 +2141,7 @@ function confineMoleculeToPhaseZone(mol, b, liquidLayout, dt) {
     minAllowedY = top;
     maxAllowedY = (isDragged || isSubmerged) ? bottom : gasCeiling;
     targetY = top + (maxAllowedY - top) * 0.35;
-  } else if (mol.phase === 'solid' || mol.phase === 'particle') {
+  } else if (mol.phase === 'particle') {
     minAllowedY = top;
     maxAllowedY = bottom;
     targetY = bottom - Math.max(radius + 10, b.h * 0.10);
@@ -2138,13 +2149,19 @@ function confineMoleculeToPhaseZone(mol, b, liquidLayout, dt) {
 
   if (targetY != null && Number.isFinite(targetY)) {
     let pullScale = 0.0035;
-    if (mol.phase === 'liquid' && softRange) {
+    if ((mol.phase === 'liquid' || mol.phase === 'solid') && softRange) {
       const overshootTop = Math.max(0, softRange.min - center.y);
       const overshootBottom = Math.max(0, center.y - softRange.max);
       const overshoot = overshootTop + overshootBottom;
-      pullScale = overshoot > 0
-        ? (0.006 + overshoot * 0.00018)
-        : 0.0011;
+      if (mol.phase === 'solid') {
+        pullScale = overshoot > 0
+          ? (0.007 + overshoot * 0.00022)
+          : 0.0014;
+      } else {
+        pullScale = overshoot > 0
+          ? (0.006 + overshoot * 0.00018)
+          : 0.0011;
+      }
     } else if (mol.phase === 'solid') {
       pullScale = 0.0085;
     } else if (mol.phase === 'particle') {

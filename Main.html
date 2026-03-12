@@ -24,6 +24,7 @@
       <div class="searchWrap">
         <span class="searchIcon">⌕</span>
         <input id="searchInput" type="text" placeholder="Search atoms, molecules, formulas..." />
+        <button id="searchClearBtn" class="searchClear" type="button" aria-label="Clear search">×</button>
       </div>
 
       <div class="tabs">
@@ -133,10 +134,22 @@
               </div>
               <span id="simLabel" class="small">Live simulation</span>
               <input id="heatSlider" type="range" min="0" max="1000" step="1" value="534" />
+              <div class="presetRow" aria-label="Temperature presets">
+                <button class="presetChip" type="button" data-temp-preset="-196">Cryo</button>
+                <button class="presetChip" type="button" data-temp-preset="0">Freeze</button>
+                <button class="presetChip" type="button" data-temp-preset="25">Room</button>
+                <button class="presetChip" type="button" data-temp-preset="100">Boil</button>
+              </div>
               <div class="rangeHead" style="margin-top:8px;">
                 <span id="pressureLabel">Pressure: 1.00 atm</span>
               </div>
               <input id="pressureSlider" type="range" min="0" max="1000" step="1" value="500" />
+              <div class="presetRow" aria-label="Pressure presets">
+                <button class="presetChip" type="button" data-pressure-preset="0.05">Vac</button>
+                <button class="presetChip" type="button" data-pressure-preset="1">1 atm</button>
+                <button class="presetChip" type="button" data-pressure-preset="5">5 atm</button>
+                <button class="presetChip" type="button" data-pressure-preset="25">25 atm</button>
+              </div>
             </div>
           </div>
         </div>

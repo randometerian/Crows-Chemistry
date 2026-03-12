@@ -30,6 +30,7 @@ const simLabel = document.getElementById('simLabel');
 const statusText = document.getElementById('statusText');
 const tabContent = document.getElementById('tabContent');
 const searchInput = document.getElementById('searchInput');
+const searchClearBtn = document.getElementById('searchClearBtn');
 const sidebarFooterText = document.getElementById('sidebarFooterText');
 const observationCounter = document.getElementById('observationCounter');
 

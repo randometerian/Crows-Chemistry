@@ -34,6 +34,7 @@ function drawLiquidLayerBadge(layer, b) {
   else if (layer.phaseTag === 'condensed' && layer.solidCount > 0 && layer.liquidCount > 0) {
     detailParts.push(`${layer.liquidCount} liquid • ${layer.solidCount} solid`);
   }
+  if (layer.boilingIntensity > 0.12) detailParts.push('boiling');
   if (layer.chemistry) detailParts.push(layer.chemistry.chemistryLabel);
   if (layer.dissolvedTypes.length) {
     detailParts.push(layer.dissolvedTypes.slice(0, 2).map(getSpeciesDisplayLabel).join(', '));
@@ -78,6 +79,75 @@ function drawLiquidLayerBadge(layer, b) {
   ctx.restore();
 }
 
+function drawLiquidLayerActivity(layer, b) {
+  const liquidLike = layer.liquidCount > 0;
+  if (!liquidLike || layer.h < 12) return;
+
+  const left = b.x + 4;
+  const width = b.w - 8;
+  const t = world.time;
+  const boiling = clamp(layer.boilingIntensity || 0, 0, 1.35);
+  const waveAmp = 0.8 + boiling * 1.5;
+  const crestY = layer.y + Math.min(12, Math.max(4, layer.h * 0.10));
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(left, layer.y, width, layer.h, 12);
+  ctx.clip();
+
+  ctx.strokeStyle = colorWithAlpha('#ffffff', 0.06 + boiling * 0.08);
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  for (let i = 0; i <= 16; i++) {
+    const x = left + (width * i) / 16;
+    const y = crestY + Math.sin(t * 2.2 + i * 0.65 + layer.centerY * 0.015) * waveAmp;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  const shimmer = ctx.createLinearGradient(left, layer.y, left, layer.y + layer.h);
+  shimmer.addColorStop(0, `rgba(255,255,255,${0.05 + boiling * 0.03})`);
+  shimmer.addColorStop(0.5, 'rgba(255,255,255,0.01)');
+  shimmer.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = shimmer;
+  ctx.fillRect(left, layer.y, width, Math.max(10, layer.h * 0.42));
+
+  if (boiling > 0.05) {
+    const bubbleCount = Math.min(16, 3 + Math.round(layer.count * 0.05 + boiling * 8));
+    for (let i = 0; i < bubbleCount; i++) {
+      const px = left + 12 + (((i * 53.7) + t * (18 + i * 3.2) * 12) % Math.max(24, width - 24));
+      const rise = ((t * (14 + i * 1.9)) + i * 17) % Math.max(24, layer.h + 22);
+      const py = layer.y + layer.h - rise;
+      const radius = 1.4 + (i % 3) * 0.55 + boiling * 0.3;
+      ctx.fillStyle = `rgba(255,255,255,${0.12 + boiling * 0.10})`;
+      ctx.beginPath();
+      ctx.arc(px, py, radius, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = `rgba(255,255,255,${0.18 + boiling * 0.12})`;
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.arc(px, py, radius + 0.8, 0, TAU);
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
+
+  if (boiling > 0.08) {
+    const vaporCount = 4 + Math.round(boiling * 6);
+    for (let i = 0; i < vaporCount; i++) {
+      const px = left + 16 + (((i * 61) + t * (22 + i * 2.7) * 9) % Math.max(28, width - 32));
+      const lift = ((t * (10 + i * 1.3)) + i * 11) % 24;
+      const py = layer.y - 6 - lift;
+      ctx.fillStyle = `rgba(236,244,255,${0.07 + boiling * 0.07})`;
+      ctx.beginPath();
+      ctx.arc(px, py, 1.2 + (i % 2) * 0.6, 0, TAU);
+      ctx.fill();
+    }
+  }
+}
+
 function drawVessel() {
   const b = world.bounds;
   ctx.save();
@@ -117,6 +187,7 @@ function drawVessel() {
       ctx.beginPath();
       ctx.roundRect(b.x + 3, layer.y, b.w - 6, layer.h, 12);
       ctx.fill();
+      drawLiquidLayerActivity(layer, b);
 
       if (layer.h >= 28) {
         drawLiquidLayerBadge(layer, b);

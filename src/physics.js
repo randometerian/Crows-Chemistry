@@ -242,10 +242,20 @@ function updatePhysics(dt) {
       }
     }
 
+    const condensedLayer = (mol.phase === 'liquid' || mol.phase === 'solid')
+      ? liquidLayout.layers.find(entry => entry.layerKey === getLiquidLayerKey(mol))
+      : null;
+
     if (mol.phase === 'particle' || mol.phase === 'solid') {
-      const settle = clamp((mol.density || 1) * 0.42, 0.18, 1.2);
+      const settleBase = clamp((mol.density || 1) * 0.42, 0.18, 1.2);
+      const settle = mol.phase === 'solid' && condensedLayer ? settleBase * 0.38 : settleBase;
+      const yNorm = clamp((center.y - b.y) / b.h, 0, 1);
+      const targetYNorm = mol.phase === 'solid' && condensedLayer
+        ? clamp((condensedLayer.centerY - b.y) / b.h, 0.16, 0.95)
+        : null;
+      const layerBias = targetYNorm == null ? 0 : (targetYNorm - yNorm) * 10.5;
       for (const a of mol.atoms) {
-        a.fy += settle * (mol.phase === 'solid' ? 1.15 : 1);
+        a.fy += settle * (mol.phase === 'solid' ? 1.15 : 1) + layerBias;
         a.vx *= mol.phase === 'solid' ? 0.972 : 0.985;
         a.vy *= mol.phase === 'solid' ? 0.982 : 0.992;
       }
@@ -253,9 +263,8 @@ function updatePhysics(dt) {
 
     if (mol.phase === 'liquid') {
       const yNorm = clamp((center.y - b.y) / b.h, 0, 1);
-      const layer = liquidLayout.layers.find(entry => entry.layerKey === getLiquidLayerKey(mol));
-      const targetYNorm = layer
-        ? clamp((layer.centerY - b.y) / b.h, 0.16, 0.93)
+      const targetYNorm = condensedLayer
+        ? clamp((condensedLayer.centerY - b.y) / b.h, 0.16, 0.93)
         : clamp(0.18 + (mol.density / 1.45) * 0.68, 0.16, 0.93);
       const densityBias = (targetYNorm - yNorm) * 12;
 

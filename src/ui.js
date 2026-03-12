@@ -10,6 +10,22 @@ function selectedUnitToCelsius(value) {
   return value;
 }
 
+function phaseTagKey(value = '') {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized.includes('aqueous')) return 'aqueous';
+  if (normalized.includes('liquid')) return 'liquid';
+  if (normalized.includes('solid')) return 'solid';
+  if (normalized.includes('gas')) return 'gas';
+  if (normalized.includes('particle')) return 'particle';
+  if (normalized.includes('condensed')) return 'condensed';
+  if (normalized.includes('data')) return 'data';
+  return normalized || 'data';
+}
+
+function phaseTagMarkup(label, phase = label) {
+  return `<div class="phaseTag phase-${phaseTagKey(phase)}">${label}</div>`;
+}
+
 function updateTempInputConstraints() {
   if (world.ui.tempInputUnit === 'F') {
     tempInput.min = String(Math.round(cToF(TEMP_MIN_C)));
@@ -262,7 +278,7 @@ function renderLibraryTab() {
             <strong><span class="colorDot" style="background:${color}"></span>${item.name}</strong>
             <span>${item.formula}</span>
           </div>
-          <div class="phaseTag">${item.phase}</div>
+          ${phaseTagMarkup(item.phase)}
         </div>
         <div class="small">${item.description}</div>
         <div class="small" style="margin-top:8px;">${behavior}</div>
@@ -316,7 +332,7 @@ function renderSceneTab() {
           <strong>${getSpeciesDisplayName(labelType)} chemistry</strong>
           <span>${layer.liquidCount} liquid molecule${layer.liquidCount === 1 ? '' : 's'}</span>
         </div>
-        <div class="phaseTag">${layer.phaseTag || (layer.layerKey === 'water' ? 'aqueous' : 'liquid')}</div>
+        ${phaseTagMarkup(layer.phaseTag || (layer.layerKey === 'water' ? 'aqueous' : 'liquid'))}
       </div>
       <div class="inspectGrid">
         <div class="kv"><span>${layer.chemistry.hasPH ? 'pH' : 'Indicator'}</span><strong>${layer.chemistry.hasPH ? layer.chemistry.pH.toFixed(1) : layer.chemistry.acidityLabel}</strong></div>
@@ -371,7 +387,7 @@ function renderSceneTab() {
             <strong><span class="colorDot" style="background:${color}"></span>${mol.display}</strong>
             <span>${arr.length} molecule${arr.length === 1 ? '' : 's'} • ${mol.formula}</span>
           </div>
-          <div class="phaseTag">${mol.phase}</div>
+          ${phaseTagMarkup(mol.phase)}
         </div>
       `;
 
@@ -453,7 +469,7 @@ function renderInspectTab() {
         <strong><span class="colorDot" style="background:${selected.color}"></span>${selected.display}</strong>
         <span>${selected.formula}</span>
       </div>
-      <div class="phaseTag">${selected.phase}</div>
+      ${phaseTagMarkup(selected.phase)}
     </div>
   `;
 
@@ -589,7 +605,7 @@ function renderReactionsTab() {
         <strong>Known Reactions</strong>
         <span>${rules.length} scripted rule${rules.length === 1 ? '' : 's'} loaded from JSON</span>
       </div>
-      <div class="phaseTag">data</div>
+      ${phaseTagMarkup('data', 'data')}
     </div>
   `;
   const knownList = document.createElement('div');

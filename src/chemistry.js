@@ -1336,11 +1336,12 @@ function handlePhaseTransitions(dt, ambientTempC, pressureAtm) {
       continue;
     }
 
-    if (config && mol.phase === 'liquid' && ambientTempC > boilC) {
-      const excess = ambientTempC - boilC;
+    if (config && mol.phase === 'liquid' && ambientTempC >= boilC - 0.5) {
+      const excess = Math.max(0, ambientTempC - boilC);
       const surfaceBias = clamp(1.25 - yNorm, 0.45, 1.35);
-      const chance = clamp((0.0005 + excess / 4200) * config.evapRate * surfaceBias * vacuumBoost * dt * 60, 0, 0.42);
-      const limit = farAboveBoil ? extremeTransitionLimit : standardTransitionLimit;
+      const nucleationBoost = ambientTempC >= boilC ? 1.6 : 0.75;
+      const chance = clamp((0.040 + excess / 80) * config.evapRate * surfaceBias * vacuumBoost * nucleationBoost * dt * 10, 0, 0.68);
+      const limit = farAboveBoil ? 5 : (ambientTempC >= boilC ? 3 : standardTransitionLimit);
       if ((farAboveBoil || Math.random() < chance) && tryReservePhaseShift(mol.type, 'liquid', 'gas', limit)) {
         setMoleculePhaseMode(mol, 'gas');
         for (const atom of mol.atoms) {

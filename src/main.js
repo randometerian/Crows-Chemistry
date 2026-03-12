@@ -102,6 +102,49 @@ function setActiveTool(tool) {
   updateThermalLabels();
 }
 
+const searchWrap = document.querySelector('.searchWrap');
+const tempPresetButtons = [...document.querySelectorAll('[data-temp-preset]')];
+const pressurePresetButtons = [...document.querySelectorAll('[data-pressure-preset]')];
+
+function activateTab(tab) {
+  cacheCurrentTabScroll();
+  world.ui.activeTab = tab;
+  syncTabButtons();
+  markSidebarDirty();
+  renderSidebar();
+}
+
+function updateSearchClearVisibility() {
+  const hasValue = !!world.ui.search.trim();
+  searchWrap?.classList.toggle('hasValue', hasValue);
+  if (searchClearBtn) searchClearBtn.disabled = !hasValue;
+}
+
+function nudgeTemperature(deltaC) {
+  world.temperatureC = clamp(world.temperatureC + deltaC, TEMP_MIN_C, TEMP_MAX_C);
+  updateThermalLabels();
+}
+
+function nudgePressure(direction, fine = false) {
+  const current = clamp(world.pressureAtm, PRESSURE_MIN_ATM, PRESSURE_MAX_ATM);
+  const scale = fine
+    ? (current < 1 ? 1.025 : current < 10 ? 1.04 : 1.06)
+    : (current < 1 ? 1.07 : current < 10 ? 1.12 : 1.18);
+  world.pressureAtm = clamp(direction > 0 ? current * scale : current / scale, PRESSURE_MIN_ATM, PRESSURE_MAX_ATM);
+  updateThermalLabels();
+}
+
+function editableTarget(target) {
+  return !!target?.closest?.('input, textarea, select, [contenteditable="true"]');
+}
+
+function toggleRunning() {
+  world.running = !world.running;
+  playPauseBtn.textContent = world.running ? 'Pause' : 'Play';
+  markSidebarDirty();
+  renderSidebar();
+}
+
 canvas.addEventListener('pointerdown', (e) => {
   const p = pointerPos(e);
   if (world.ui.activeTool === 'light' && pointInRect(p, world.bounds)) {
@@ -153,11 +196,7 @@ window.addEventListener('pointerup', (e) => {
 
 document.querySelectorAll('.tabBtn').forEach(btn => {
   btn.addEventListener('click', () => {
-    cacheCurrentTabScroll();
-    world.ui.activeTab = btn.dataset.tab;
-    syncTabButtons();
-    markSidebarDirty();
-    renderSidebar();
+    activateTab(btn.dataset.tab);
   });
 });
 
@@ -171,16 +210,21 @@ document.querySelectorAll('.controlToggle').forEach(toggle => {
 
 searchInput.addEventListener('input', (e) => {
   world.ui.search = e.target.value;
+  updateSearchClearVisibility();
   markSidebarDirty();
   renderSidebar();
 });
 
-playPauseBtn.addEventListener('click', () => {
-  world.running = !world.running;
-  playPauseBtn.textContent = world.running ? 'Pause' : 'Play';
+searchClearBtn?.addEventListener('click', () => {
+  world.ui.search = '';
+  searchInput.value = '';
+  updateSearchClearVisibility();
   markSidebarDirty();
   renderSidebar();
+  searchInput.focus();
 });
+
+playPauseBtn.addEventListener('click', toggleRunning);
 
 clearBtn.addEventListener('click', clearWorld);
 
@@ -189,6 +233,20 @@ stirBtn.addEventListener('click', () => startStirring());
 lightBtn.addEventListener('click', () => {
   setActiveTool(world.ui.activeTool === 'light' ? 'select' : 'light');
 });
+
+for (const btn of tempPresetButtons) {
+  btn.addEventListener('click', () => {
+    world.temperatureC = clamp(Number(btn.dataset.tempPreset), TEMP_MIN_C, TEMP_MAX_C);
+    updateThermalLabels();
+  });
+}
+
+for (const btn of pressurePresetButtons) {
+  btn.addEventListener('click', () => {
+    world.pressureAtm = clamp(Number(btn.dataset.pressurePreset), PRESSURE_MIN_ATM, PRESSURE_MAX_ATM);
+    updateThermalLabels();
+  });
+}
 
 stirStrengthSlider.addEventListener('input', (e) => {
   world.stirStrength = clamp(Number(e.target.value) || world.stirStrength, Number(stirStrengthSlider.min), Number(stirStrengthSlider.max));
@@ -237,6 +295,17 @@ pressureSlider.addEventListener('input', (e) => {
   updateThermalLabels();
 });
 
+heatSlider.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const baseStep = Math.abs(world.temperatureC) < 120 ? 5 : 12;
+  nudgeTemperature((e.deltaY < 0 ? 1 : -1) * (e.shiftKey ? 1 : baseStep));
+}, { passive: false });
+
+pressureSlider.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  nudgePressure(e.deltaY < 0 ? 1 : -1, e.shiftKey);
+}, { passive: false });
+
 tempUnitSelect.addEventListener('change', (e) => {
   world.ui.tempInputUnit = e.target.value;
   updateThermalLabels();
@@ -267,6 +336,61 @@ tempInput.addEventListener('keydown', (e) => {
   }
 });
 
+tempInput.addEventListener('wheel', (e) => {
+  if (document.activeElement !== tempInput) return;
+  e.preventDefault();
+  const step = e.shiftKey ? 10 : 1;
+  const nextValue = (Number(tempInput.value) || 0) + (e.deltaY < 0 ? step : -step);
+  tempInput.value = String(nextValue);
+  world.ui.editingTempInput = false;
+  commitTempInputValue();
+}, { passive: false });
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === '/' && !editableTarget(e.target)) {
+    e.preventDefault();
+    searchInput.focus();
+    searchInput.select();
+    return;
+  }
+
+  if (e.altKey && !editableTarget(e.target)) {
+    if (e.key === '1') activateTab('library');
+    else if (e.key === '2') activateTab('scene');
+    else if (e.key === '3') activateTab('inspect');
+    else if (e.key === '4') activateTab('reactions');
+    else return;
+    e.preventDefault();
+    return;
+  }
+
+  if (e.key === 'Escape') {
+    if (world.ui.search.trim()) {
+      world.ui.search = '';
+      searchInput.value = '';
+      updateSearchClearVisibility();
+      markSidebarDirty();
+      renderSidebar();
+      return;
+    }
+    if (world.selectedMolId != null) {
+      world.selectedMolId = null;
+      markSidebarDirty();
+      renderSidebar();
+      return;
+    }
+    if (world.ui.activeTool !== 'select') {
+      setActiveTool('select');
+    }
+    return;
+  }
+
+  if (e.key === ' ' && !editableTarget(e.target)) {
+    e.preventDefault();
+    toggleRunning();
+  }
+});
+
 async function loadObservationCounter() {
   setObservationCounter('...');
   try {
@@ -283,6 +407,7 @@ async function initApp() {
   world.reactionData = await loadReactionData();
   await loadObservationCounter();
   resize();
+  updateSearchClearVisibility();
   updateThermalLabels();
   syncTabButtons();
   renderSidebar();
