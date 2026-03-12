@@ -22,8 +22,29 @@ function phaseTagKey(value = '') {
   return normalized || 'data';
 }
 
-function phaseTagMarkup(label, phase = label) {
-  return `<div class="phaseTag phase-${phaseTagKey(phase)}">${label}</div>`;
+function phaseTagDisplay(label, phase = label, options = {}) {
+  const phaseKey = phaseTagKey(phase);
+  if (phaseKey === 'particle' && !options.isAtom) {
+    return { label: 'solid', phase: 'solid' };
+  }
+  return { label, phase };
+}
+
+function phaseTagMarkup(label, phase = label, options = {}) {
+  const display = phaseTagDisplay(label, phase, options);
+  return `<div class="phaseTag phase-${phaseTagKey(display.phase)}">${display.label}</div>`;
+}
+
+function emptyStateMarkup(icon, title, message) {
+  return `
+    <div class="emptyStateInner">
+      <div class="emptyStateIcon" aria-hidden="true">
+        <i data-lucide="${icon}"></i>
+      </div>
+      <strong>${title}</strong>
+      <div class="small">${message}</div>
+    </div>
+  `;
 }
 
 function updateTempInputConstraints() {
@@ -53,7 +74,6 @@ function updateThermalLabels() {
   const ambientF = Math.round(cToF(ambientC));
   const ambientK = Math.round(cToK(ambientC));
   const effectivePressureAtm = getEffectivePressureAtm();
-  const waterChem = getWaterChemistrySnapshot();
   const liquidLayout = getLiquidLayerLayout();
   const primaryChem = liquidLayout.layers.find(layer => layer.chemistry)?.chemistry || null;
   const tempSliderValue = temperatureToSliderValue(world.temperatureC);
@@ -79,7 +99,7 @@ function updateThermalLabels() {
     tempInput.value = String(Math.round(toSelectedUnitTemp(world.temperatureC)));
   }
   tempUnitSelect.value = world.ui.tempInputUnit;
-  heatDoseLabel.textContent = 'Shot strength';
+  heatDoseLabel.textContent = 'Pulse dose';
   heatDoseValue.textContent = `${Math.abs(Math.round(world.heatDoseC))}°C`;
   stirStrengthLabel.textContent = 'Stir strength';
   stirStrengthValue.textContent = `${world.stirStrength.toFixed(1)}x`;
@@ -88,17 +108,88 @@ function updateThermalLabels() {
   lightBandLabel.textContent = 'EM frequency';
   lightBandSlider.value = String(Math.max(0, LIGHT_BANDS.findIndex(entry => entry.id === world.light.band)));
   lightBandValue.textContent = getLightBand(world.light.band).label;
+  const gasCount = getGasMoleculeCount();
   const stirringText = world.stirring.timeLeft > 0 ? ` • Stirring ${world.stirring.timeLeft.toFixed(1)}s @ ${world.stirring.power.toFixed(1)}x` : '';
-  const lightText = world.light.firing ? ` • ${getLightBand(world.light.band).label} beam @ ${world.light.power.toFixed(1)}x` : (world.ui.activeTool === 'light' ? ` • Light tool armed (${getLightBand(world.light.band).label})` : '');
+  const lightArmed = world.ui.activeTool === 'light';
+  const lightLive = world.light.firing;
+  const stirLive = world.stirring.timeLeft > 0;
+  const lightText = lightLive ? ` • ${getLightBand(world.light.band).label} beam @ ${world.light.power.toFixed(1)}x` : (lightArmed ? ` • Light tool armed (${getLightBand(world.light.band).label})` : '');
+  const primaryChemLabel = primaryChem ? primaryChem.chemistryLabel : 'No dominant liquid chemistry';
   const waterText = primaryChem ? ` • ${primaryChem.chemistryLabel}` : '';
+  const toolLabel = lightLive
+    ? `${getLightBand(world.light.band).label} beam`
+    : lightArmed
+    ? `${getLightBand(world.light.band).label} ready`
+    : stirLive
+    ? `Stir ${world.stirring.power.toFixed(1)}x`
+    : 'Select';
+  const thermalLedger = `+${Math.round(world.thermalStats.addedC)} / -${Math.round(world.thermalStats.removedC)}°C`;
+  const environmentShifted = Math.abs(world.temperatureC - 25) > 20 || Math.abs(world.pressureAtm - 1) > 0.25;
   simLabel.textContent = `Base ${c}°C • Offset ${formatThermalDelta(pulse) || '0°C'} • Effective ${ambientC}°C • ${formatPressureAtm(effectivePressureAtm)} atm${waterText} • ${world.timeScale}x speed${stirringText}${lightText}`;
+  setButtonLabel(playPauseBtn, world.running ? 'Pause' : 'Play');
+  playPauseBtn.classList.toggle('active', world.running);
+  playPauseBtn.classList.toggle('paused', !world.running);
+  playPauseBtn.setAttribute('aria-pressed', world.running ? 'true' : 'false');
   setButtonLabel(timeScaleBtn, `Time ${world.timeScale}x`);
-  stirBtn.classList.toggle('active', world.stirring.timeLeft > 0);
-  setButtonLabel(stirBtn, world.stirring.timeLeft > 0 ? 'Stirring' : 'Stir');
-  lightBtn.classList.toggle('active', world.ui.activeTool === 'light');
-  setButtonLabel(lightBtn, world.ui.activeTool === 'light' ? 'Light Tool On' : 'Light Tool');
+  timeScaleBtn.classList.toggle('active', world.timeScale > 1);
+  timeScaleBtn.classList.toggle('boosted', world.timeScale > 1);
+  timeScaleBtn.setAttribute('aria-pressed', world.timeScale > 1 ? 'true' : 'false');
+  stirBtn.classList.toggle('active', stirLive);
+  stirBtn.classList.toggle('live', stirLive);
+  setButtonLabel(stirBtn, stirLive ? 'Stirring' : 'Stir');
+  stirBtn.setAttribute('aria-pressed', stirLive ? 'true' : 'false');
+  lightBtn.classList.toggle('active', lightArmed || lightLive);
+  lightBtn.classList.toggle('armed', lightArmed && !lightLive);
+  lightBtn.classList.toggle('live', lightLive);
+  setButtonLabel(lightBtn, lightLive ? 'Firing Beam' : lightArmed ? 'Light Armed' : 'Light Tool');
+  lightBtn.setAttribute('aria-pressed', lightArmed || lightLive ? 'true' : 'false');
+  lightControlGroup?.classList.toggle('armed', lightArmed && !lightLive);
+  lightControlGroup?.classList.toggle('live', lightLive);
+  stirControlGroup?.classList.toggle('live', stirLive);
+  environmentControlGroup?.classList.toggle('armed', environmentShifted);
   canvas.style.cursor = world.ui.activeTool === 'light' ? 'crosshair' : 'default';
-  statusText.innerHTML = `${world.running ? 'Running' : 'Paused'}<br>${world.molecules.length} molecules<br>${ambientC}°C effective • ${formatPressureAtm(effectivePressureAtm)} atm${primaryChem ? ` • ${primaryChem.chemistryLabel}` : ''}<br>${world.stats.reactions} reactions • heat +${Math.round(world.thermalStats.addedC)} / -${Math.round(world.thermalStats.removedC)}${world.ui.activeTool === 'light' ? `<br>${getLightBand(world.light.band).label} tool ${world.light.firing ? `firing @ ${world.light.power.toFixed(1)}x` : 'armed'}` : ''}`;
+  statusText.innerHTML = `
+    <div class="statusGrid">
+      <div class="statusMetric">
+        <span>State</span>
+        <strong class="statusFlag ${world.running ? 'running' : 'paused'}">${world.running ? 'Running' : 'Paused'}</strong>
+      </div>
+      <div class="statusMetric">
+        <span>Molecules</span>
+        <strong>${world.molecules.length}</strong>
+      </div>
+      <div class="statusMetric">
+        <span>Temp</span>
+        <strong>${ambientC}°C</strong>
+      </div>
+      <div class="statusMetric">
+        <span>Pressure</span>
+        <strong>${formatPressureAtm(effectivePressureAtm)} atm</strong>
+      </div>
+      <div class="statusMetric">
+        <span>Tool</span>
+        <strong>${toolLabel}</strong>
+      </div>
+      <div class="statusMetric">
+        <span>Reactions</span>
+        <strong>${world.stats.reactions}</strong>
+      </div>
+    </div>
+    <div class="statusDetailGrid">
+      <div class="statusDetail">
+        <span>Chemistry</span>
+        <strong>${primaryChemLabel}</strong>
+      </div>
+      <div class="statusDetail">
+        <span>Vessel</span>
+        <strong>${gasCount} gas molecules • ${world.timeScale}x speed</strong>
+      </div>
+      <div class="statusDetail">
+        <span>Thermal Ledger</span>
+        <strong>${thermalLedger}</strong>
+      </div>
+    </div>
+  `;
 }
 
 function cycleTimeScale() {
@@ -221,7 +312,7 @@ function syncTabButtons() {
 
 function renderLibraryTab() {
   const wrap = document.createElement('div');
-  wrap.className = 'content';
+  wrap.className = 'content contentLibrary';
 
   const chips = document.createElement('div');
   chips.className = 'chips';
@@ -263,7 +354,7 @@ function renderLibraryTab() {
   if (items.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'emptyState';
-    empty.innerHTML = `<div><strong>No matches</strong><div class="small" style="margin-top:6px;">Try a different search or filter.</div></div>`;
+    empty.innerHTML = emptyStateMarkup('search', 'No species match that filter', 'Try a different formula, phase filter, or search term.');
     list.appendChild(empty);
   } else {
     for (const item of items) {
@@ -278,7 +369,7 @@ function renderLibraryTab() {
             <strong><span class="colorDot" style="background:${color}"></span>${item.name}</strong>
             <span>${item.formula}</span>
           </div>
-          ${phaseTagMarkup(item.phase)}
+          ${phaseTagMarkup(item.phase, item.phase, { isAtom: item.category === 'atoms' })}
         </div>
         <div class="small">${item.description}</div>
         <div class="small" style="margin-top:8px;">${behavior}</div>
@@ -315,7 +406,7 @@ function renderLibraryTab() {
 
 function renderSceneTab() {
   const wrap = document.createElement('div');
-  wrap.className = 'content';
+  wrap.className = 'content contentScene';
 
   const list = document.createElement('div');
   list.className = 'scroll';
@@ -347,7 +438,7 @@ function renderSceneTab() {
   if (world.molecules.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'emptyState';
-    empty.innerHTML = `<div><strong>Sandbox is empty</strong><div class="small" style="margin-top:6px;">Add atoms or molecules from Library.</div></div>`;
+    empty.innerHTML = emptyStateMarkup('layout-grid', 'Sandbox is empty', 'Load atoms or molecules from the Library to start a scene.');
     list.appendChild(empty);
     wrap.appendChild(list);
     return wrap;
@@ -370,7 +461,7 @@ function renderSceneTab() {
   if (entries.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'emptyState';
-    empty.innerHTML = `<div><strong>No scene matches</strong><div class="small" style="margin-top:6px;">Your search did not match anything in the sandbox.</div></div>`;
+    empty.innerHTML = emptyStateMarkup('search', 'No scene matches', 'Nothing in the vessel matches the current search.');
     list.appendChild(empty);
   } else {
     entries.sort((a, b) => a[1][0].display.localeCompare(b[1][0].display));
@@ -387,7 +478,7 @@ function renderSceneTab() {
             <strong><span class="colorDot" style="background:${color}"></span>${mol.display}</strong>
             <span>${arr.length} molecule${arr.length === 1 ? '' : 's'} • ${mol.formula}</span>
           </div>
-          ${phaseTagMarkup(mol.phase)}
+        ${phaseTagMarkup(mol.phase, mol.phase, { isAtom: mol.type.startsWith('atom-') })}
         </div>
       `;
 
@@ -448,7 +539,7 @@ function renderInspectTab() {
   if (!selected) {
     const empty = document.createElement('div');
     empty.className = 'emptyState';
-    empty.innerHTML = `<div><strong>Nothing selected</strong><div class="small" style="margin-top:6px;">Click a molecule in the sandbox or select one from Scene.</div></div>`;
+    empty.innerHTML = emptyStateMarkup('search', 'Nothing selected', 'Choose a molecule in the vessel to inspect its structure, phases, and chemistry.');
     wrap.appendChild(empty);
     return wrap;
   }
@@ -469,7 +560,7 @@ function renderInspectTab() {
         <strong><span class="colorDot" style="background:${selected.color}"></span>${selected.display}</strong>
         <span>${selected.formula}</span>
       </div>
-      ${phaseTagMarkup(selected.phase)}
+      ${phaseTagMarkup(selected.phase, selected.phase, { isAtom: selected.type.startsWith('atom-') })}
     </div>
   `;
 
@@ -557,11 +648,11 @@ function renderInspectTab() {
 
 function renderReactionsTab() {
   const wrap = document.createElement('div');
-  wrap.className = 'content';
+  wrap.className = 'content contentReactions';
 
   const head = document.createElement('div');
   head.className = 'logHead';
-  head.innerHTML = `<h2>Reaction Log</h2>`;
+  head.innerHTML = `<h2 class="sectionTitle"><i data-lucide="activity" aria-hidden="true"></i><span>Reaction Log</span></h2>`;
 
   const actions = document.createElement('div');
   actions.className = 'logActions';
@@ -629,7 +720,7 @@ function renderReactionsTab() {
   if (visibleRules.length === 0) {
     const emptyRules = document.createElement('div');
     emptyRules.className = 'small';
-    emptyRules.textContent = 'No known reaction matches for the current search.';
+    emptyRules.textContent = 'No scripted reactions match the current search.';
     knownList.appendChild(emptyRules);
   }
   known.appendChild(knownList);
@@ -645,7 +736,7 @@ function renderReactionsTab() {
   if (rows.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'emptyState';
-    empty.innerHTML = '<div><strong>No reactions logged</strong><div class="small" style="margin-top:6px;">Run the simulation to capture bond events and pathway reactions.</div></div>';
+    empty.innerHTML = emptyStateMarkup('activity', 'No reactions logged yet', 'Run the sim or push the environment harder to capture events here.');
     list.appendChild(empty);
   } else {
     for (const entry of rows) {
@@ -679,6 +770,7 @@ function renderSidebar() {
   else content = renderReactionsTab();
 
   tabContent.appendChild(content);
+  refreshLucideIcons();
   const scroller = tabContent.querySelector('.scroll');
   if (scroller) {
     const tabKey = world.ui.activeTab;

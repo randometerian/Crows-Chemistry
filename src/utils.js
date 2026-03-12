@@ -33,6 +33,9 @@ const searchInput = document.getElementById('searchInput');
 const searchClearBtn = document.getElementById('searchClearBtn');
 const sidebarFooterText = document.getElementById('sidebarFooterText');
 const observationCounter = document.getElementById('observationCounter');
+const lightControlGroup = document.querySelector('.controlGroup[data-control="light"]');
+const stirControlGroup = document.querySelector('.controlGroup[data-control="stir"]');
+const environmentControlGroup = document.querySelector('.controlGroup[data-control="environment"]');
 
 function setButtonLabel(button, label) {
   if (!button) return;
