@@ -10,6 +10,24 @@ function selectedUnitToCelsius(value) {
   return value;
 }
 
+function updateTempInputConstraints() {
+  if (world.ui.tempInputUnit === 'F') {
+    tempInput.min = String(Math.round(cToF(TEMP_MIN_C)));
+    tempInput.max = String(Math.round(cToF(TEMP_MAX_C)));
+    tempInput.step = '1';
+    return;
+  }
+  if (world.ui.tempInputUnit === 'K') {
+    tempInput.min = '0';
+    tempInput.max = String(Math.round(cToK(TEMP_MAX_C)));
+    tempInput.step = '1';
+    return;
+  }
+  tempInput.min = String(Math.ceil(TEMP_MIN_C));
+  tempInput.max = String(Math.round(TEMP_MAX_C));
+  tempInput.step = '1';
+}
+
 function updateThermalLabels() {
   const c = Math.round(world.temperatureC);
   const f = Math.round(cToF(c));
@@ -22,14 +40,14 @@ function updateThermalLabels() {
   const waterChem = getWaterChemistrySnapshot();
   const liquidLayout = getLiquidLayerLayout();
   const primaryChem = liquidLayout.layers.find(layer => layer.chemistry)?.chemistry || null;
-  const min = Number(heatSlider.min);
-  const max = Number(heatSlider.max);
-  const fill = ((world.temperatureC - min) / (max - min)) * 100;
+  const tempSliderValue = temperatureToSliderValue(world.temperatureC);
+  const pressureSliderValue = pressureToSliderValue(world.pressureAtm);
+  const fill = sliderNorm(tempSliderValue, Number(heatSlider.min), Number(heatSlider.max)) * 100;
   const doseFill = ((Math.abs(world.heatDoseC) - Number(heatDoseSlider.min)) / (Number(heatDoseSlider.max) - Number(heatDoseSlider.min))) * 100;
   const stirFill = ((world.stirStrength - Number(stirStrengthSlider.min)) / (Number(stirStrengthSlider.max) - Number(stirStrengthSlider.min))) * 100;
   const lightFill = ((world.lightStrength - Number(lightStrengthSlider.min)) / (Number(lightStrengthSlider.max) - Number(lightStrengthSlider.min))) * 100;
   const lightBandFill = ((LIGHT_BANDS.findIndex(entry => entry.id === world.light.band) - Number(lightBandSlider.min)) / (Number(lightBandSlider.max) - Number(lightBandSlider.min))) * 100;
-  const pressureFill = ((world.pressureAtm - Number(pressureSlider.min)) / (Number(pressureSlider.max) - Number(pressureSlider.min))) * 100;
+  const pressureFill = sliderNorm(pressureSliderValue, Number(pressureSlider.min), Number(pressureSlider.max)) * 100;
   heatSlider.style.setProperty('--fill', `${clamp(fill, 0, 100)}%`);
   heatDoseSlider.style.setProperty('--fill', `${clamp(doseFill, 0, 100)}%`);
   stirStrengthSlider.style.setProperty('--fill', `${clamp(stirFill, 0, 100)}%`);
@@ -37,8 +55,10 @@ function updateThermalLabels() {
   lightBandSlider.style.setProperty('--fill', `${clamp(lightBandFill, 0, 100)}%`);
   pressureSlider.style.setProperty('--fill', `${clamp(pressureFill, 0, 100)}%`);
   heatLabel.textContent = `Base: ${c}°C / ${f}°F / ${k}K • Effective: ${ambientC}°C / ${ambientF}°F / ${ambientK}K`;
-  pressureSlider.value = String(world.pressureAtm);
+  heatSlider.value = String(tempSliderValue);
+  pressureSlider.value = String(pressureSliderValue);
   pressureLabel.textContent = `Pressure: ${formatPressureAtm(effectivePressureAtm)} atm • Base ${formatPressureAtm(world.pressureAtm)} atm • Gas ${getGasMoleculeCount()}`;
+  updateTempInputConstraints();
   if (!world.ui.editingTempInput) {
     tempInput.value = String(Math.round(toSelectedUnitTemp(world.temperatureC)));
   }
@@ -294,9 +314,9 @@ function renderSceneTab() {
       <div class="cardTop">
         <div class="cardTitle">
           <strong>${getSpeciesDisplayName(labelType)} chemistry</strong>
-          <span>${layer.count} liquid molecule${layer.count === 1 ? '' : 's'}</span>
+          <span>${layer.liquidCount} liquid molecule${layer.liquidCount === 1 ? '' : 's'}</span>
         </div>
-        <div class="phaseTag">${layer.layerKey === 'water' ? 'aqueous' : 'liquid'}</div>
+        <div class="phaseTag">${layer.phaseTag || (layer.layerKey === 'water' ? 'aqueous' : 'liquid')}</div>
       </div>
       <div class="inspectGrid">
         <div class="kv"><span>${layer.chemistry.hasPH ? 'pH' : 'Indicator'}</span><strong>${layer.chemistry.hasPH ? layer.chemistry.pH.toFixed(1) : layer.chemistry.acidityLabel}</strong></div>
@@ -403,7 +423,9 @@ function renderSceneTab() {
 
 function renderInspectTab() {
   const wrap = document.createElement('div');
-  wrap.className = 'content';
+  wrap.className = 'content inspectContent';
+  const list = document.createElement('div');
+  list.className = 'scroll inspectScroll';
 
   const selected = getSelectedMolecule();
 
@@ -416,13 +438,14 @@ function renderInspectTab() {
   }
 
   const card = document.createElement('div');
-  card.className = 'card';
+  card.className = 'card inspectCard';
 
   const c = moleculeCenter(selected);
   const mass = moleculeMass(selected);
   const avgBond = averageBondLength(selected);
   const bondStrain = averageBondStrain(selected);
   const profile = getSpeciesProfile(selected.type);
+  const material = getMaterialConditions(selected.type);
 
   card.innerHTML = `
     <div class="cardTop">
@@ -435,7 +458,7 @@ function renderInspectTab() {
   `;
 
   const grid = document.createElement('div');
-  grid.className = 'inspectGrid';
+  grid.className = 'inspectGrid inspectMetaGrid';
   grid.innerHTML = `
     <div class="kv"><span>Type</span><strong>${selected.type}</strong></div>
     <div class="kv"><span>Atoms</span><strong>${selected.atoms.length}</strong></div>
@@ -446,42 +469,50 @@ function renderInspectTab() {
     <div class="kv"><span>Avg bond</span><strong>${avgBond == null ? '—' : avgBond.toFixed(1)}</strong></div>
     <div class="kv"><span>Bond strain</span><strong>${bondStrain == null ? '—' : bondStrain.toFixed(1)}</strong></div>
     <div class="kv"><span>Center</span><strong>${Math.round(c.x)}, ${Math.round(c.y)}</strong></div>
+    <div class="kv"><span>Phases</span><strong>${formatPhaseCapabilities(selected.type)}</strong></div>
+    <div class="kv"><span>Polarity</span><strong>${material.descriptors.polarity}</strong></div>
+    <div class="kv"><span>Melting</span><strong>${formatMaterialTemp(material.thermal.meltingPointC)}</strong></div>
+    <div class="kv"><span>Boiling</span><strong>${formatMaterialTemp(material.thermal.boilingPointC)}</strong></div>
+    <div class="kv"><span>Vapor level</span><strong>${material.descriptors.vaporLevel}</strong></div>
+    <div class="kv"><span>Condensation</span><strong>${material.descriptors.condensationLevel}</strong></div>
+    <div class="kv"><span>Aqueous role</span><strong>${material.aqueous.role}</strong></div>
+    <div class="kv"><span>Nominal pH</span><strong>${material.aqueous.pH == null ? 'n/a' : material.aqueous.pH.toFixed(1)}</strong></div>
+    <div class="kv"><span>Light bands</span><strong>${material.optical.absorptionBands.join(', ')}</strong></div>
+    <div class="kv"><span>Emission color</span><strong>${material.optical.emissionColor}</strong></div>
   `;
 
-  const hint = document.createElement('div');
   const evap = EVAPORATION_CONFIG[selected.type];
   const effectivePressureAtm = getEffectivePressureAtm();
   const ionProfile = AQUEOUS_ION_PROFILES[selected.type];
   const weakAcid = WEAK_AQUEOUS_ACIDS[selected.type];
-  hint.className = 'hintBox';
-  hint.innerHTML = `
-    <strong style="color:var(--text)">${getSpeciesDisplayName(selected.type)}</strong><br>
-    ${profile.hint
-      ? profile.hint
-      : selected.phase === 'liquid'
-      ? `This liquid participates in the simplified density and layering model.`
-      : `This particle is mostly visual unless a scripted reaction rule references it.`}
-    <div style="margin-top:10px;">
-      <strong style="color:var(--text)">Can react with:</strong> ${formatSpeciesList(profile.reactWith)}<br>
-      <strong style="color:var(--text)">Can turn into:</strong> ${formatSpeciesList(profile.turnsInto)}<br>
-      <strong style="color:var(--text)">Can be made from:</strong> ${formatSpeciesList(profile.formedFrom)}
+  const summary = document.createElement('div');
+  summary.className = 'hintBox inspectSummary';
+  const intro = profile.hint
+    ? profile.hint
+    : selected.phase === 'liquid'
+    ? 'Liquid species in the density/layering model.'
+    : 'Particle or gas species used by the scripted sandbox.';
+  const thermalText = evap
+    ? `Boils near ${Math.round(getPressureAdjustedBoilingPointC(selected.type, effectivePressureAtm))}°C and condenses near ${Math.round(getPressureAdjustedCondensePointC(selected.type, effectivePressureAtm))}°C at ${formatPressureAtm(effectivePressureAtm)} atm.`
+    : `Melting ${formatMaterialTemp(material.thermal.meltingPointC)}, boiling ${formatMaterialTemp(material.thermal.boilingPointC)}, heat capacity ${material.thermal.heatCapacity.toFixed(2)}.`;
+  const aqueousText = ionProfile
+    ? `Dissociates into ${Object.keys(ionProfile.ions).map(formatIonLabel).join(' and ')}.`
+    : (!ionProfile && weakAcid && selected.phase === 'liquid')
+    ? 'Behaves as a weak acid in water.'
+    : `${material.aqueous.role === 'neutral' ? 'No special aqueous chemistry.' : `Aqueous role: ${material.aqueous.role}.`}`;
+  summary.innerHTML = `
+    <div class="inspectSummaryTitle">${getSpeciesDisplayName(selected.type)}</div>
+    <div class="inspectSummaryText">${intro}</div>
+    <div class="inspectSummaryGrid">
+      <div class="inspectMini"><span>Reacts with</span><strong>${formatSpeciesList(profile.reactWith, 4)}</strong></div>
+      <div class="inspectMini"><span>Turns into</span><strong>${formatSpeciesList(profile.turnsInto, 4)}</strong></div>
+      <div class="inspectMini"><span>Made from</span><strong>${formatSpeciesList(profile.formedFrom, 4)}</strong></div>
+      <div class="inspectMini"><span>Thermal</span><strong>${thermalText}</strong></div>
+      <div class="inspectMini"><span>Aqueous</span><strong>${aqueousText}</strong></div>
+      <div class="inspectMini"><span>Optical</span><strong>Absorbs ${material.optical.absorptionBands.join(', ')}; emits ${material.optical.emittedBand} ${material.optical.emissionColor}.</strong></div>
     </div>
-    ${evap ? `<div style="margin-top:10px;"><strong style="color:var(--text)">Thermal behavior:</strong> boils near ${Math.round(getPressureAdjustedBoilingPointC(selected.type, effectivePressureAtm))}°C and condenses near ${Math.round(getPressureAdjustedCondensePointC(selected.type, effectivePressureAtm))}°C at ${formatPressureAtm(effectivePressureAtm)} atm.</div>` : ''}
-    ${ionProfile ? `<div style="margin-top:10px;"><strong style="color:var(--text)">In water:</strong> dissociates into ${Object.keys(ionProfile.ions).map(formatIonLabel).join(' and ')}.</div>` : ''}
-    ${!ionProfile && weakAcid && selected.phase === 'liquid' ? `<div style="margin-top:10px;"><strong style="color:var(--text)">In water:</strong> behaves as a weak acid.</div>` : ''}
+    ${material.descriptors.notes ? `<div class="inspectSummaryText">${material.descriptors.notes}</div>` : ''}
   `;
-
-  const outgoing = renderRuleList(
-    'What It Can Do',
-    profile.reactantRules,
-    'No scripted reaction currently uses this species as a reactant.'
-  );
-
-  const incoming = renderRuleList(
-    'What Makes It',
-    profile.productRules,
-    'No scripted reaction currently produces this species.'
-  );
 
   const actions = document.createElement('div');
   actions.className = 'cardActions';
@@ -500,12 +531,11 @@ function renderInspectTab() {
   actions.appendChild(delBtn);
 
   card.appendChild(grid);
-  card.appendChild(hint);
+  card.appendChild(summary);
   card.appendChild(actions);
 
-  wrap.appendChild(card);
-  wrap.appendChild(outgoing);
-  wrap.appendChild(incoming);
+  list.appendChild(card);
+  wrap.appendChild(list);
   return wrap;
 }
 

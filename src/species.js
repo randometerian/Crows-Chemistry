@@ -1046,6 +1046,180 @@ const FORMULA_META = {
   Na2CO3: { phase: 'particle', density: 2.54, miscibleGroup: 'salt', color: '#bed8a8' },
   NaC2H3O2: { phase: 'particle', density: 1.53, miscibleGroup: 'salt', color: '#c7d5a7' }
 };
+
+function getMaterialFallbackSpec(type) {
+  if (SPECIES[type]) return SPECIES[type];
+  if (type.startsWith('atom-')) {
+    const el = type.replace('atom-', '');
+    const color = elementStyles[el]?.color || '#9bbcff';
+    const phase = (el === 'O' || el === 'H' || el === 'Cl' || el === 'N') ? 'gas' : 'particle';
+    return {
+      phase,
+      density: phase === 'gas' ? 0.12 : 0.5,
+      miscibleGroup: phase === 'gas' ? 'gas' : 'particle',
+      color
+    };
+  }
+  return { phase: 'particle', density: 1, miscibleGroup: 'particle', color: '#9bbcff' };
+}
+
+function normalizeMaterialProfile(type, source = {}) {
+  const fallback = getMaterialFallbackSpec(type);
+  const defaultPhase = source.defaultPhase || fallback.phase || 'particle';
+  const defaultStates = {
+    [defaultPhase]: {
+      density: fallback.density ?? 1,
+      miscibleGroup: fallback.miscibleGroup || 'particle',
+      color: fallback.color || '#9bbcff'
+    }
+  };
+  const states = { ...defaultStates, ...(source.states || {}) };
+  const thermal = {
+    meltingPointC: null,
+    boilingPointC: null,
+    condensePointC: null,
+    heatCapacity: 1,
+    dHvapKJ: null,
+    evapRate: 0,
+    coolDeltaC: 0,
+    minPressureAtm: 0.01,
+    ignitionPointC: null,
+    decompositionPointC: null,
+    ...source.thermal
+  };
+  if (states.gas && states.liquid && Number.isFinite(thermal.boilingPointC)) {
+    if (!Number.isFinite(thermal.condensePointC)) {
+      thermal.condensePointC = thermal.boilingPointC - 8;
+    }
+    if (!Number.isFinite(thermal.dHvapKJ)) {
+      thermal.dHvapKJ = thermal.boilingPointC < 0 ? 12 : 30;
+    }
+    if (!(thermal.evapRate > 0)) {
+      thermal.evapRate = thermal.boilingPointC < 0 ? 0.11 : 0.08;
+    }
+    if (!(thermal.coolDeltaC < 0)) {
+      thermal.coolDeltaC = thermal.boilingPointC < 0 ? -7 : -8;
+    }
+  }
+  if (!states.solid && Number.isFinite(thermal.meltingPointC)) {
+    const solidBase = states.liquid || states.particle || states[defaultPhase] || defaultStates[defaultPhase];
+    states.solid = {
+      density: clamp((solidBase?.density ?? 1) * 1.08, 0.08, 6),
+      miscibleGroup: solidBase?.miscibleGroup === 'gas' ? 'solid' : (solidBase?.miscibleGroup || 'solid'),
+      color: solidBase?.color || fallback.color || '#9bbcff'
+    };
+  }
+  const descriptors = {
+    polarity: 'unknown',
+    vaporLevel: states.gas ? 1 : 0,
+    condensationLevel: states.liquid ? 1 : 0,
+    notes: '',
+    ...source.descriptors
+  };
+
+  return {
+    defaultPhase,
+    states,
+    descriptors,
+    thermal,
+    aqueous: {
+      role: 'neutral',
+      pH: null,
+      electrolyte: 'none',
+      ionProfile: null,
+      weakAcid: null,
+      ...source.aqueous
+    },
+    solubility: {
+      solventGroup: null,
+      dissolvedDensity: null,
+      nearRadius: 120,
+      requiredNeighbors: 2,
+      dissolveRate: 0,
+      precipitateRate: 0,
+      sourcePhases: ['particle'],
+      ...source.solubility
+    },
+    optical: {
+      absorptionBands: ['visible'],
+      emissionColor: fallback.color || '#9bbcff',
+      scatteringColor: fallback.color || '#9bbcff',
+      photoReactive: false,
+      excitationMultiplier: 1,
+      lightToHeatFactor: 0.12,
+      emittedBand: 'visible',
+      ...source.optical
+    }
+  };
+}
+
+const MATERIAL_CONDITIONS = {
+  H2: normalizeMaterialProfile('H2', { states: { liquid: { density: 0.071, miscibleGroup: 'cryogenic', color: '#7fb8f5' } }, thermal: { meltingPointC: -259, boilingPointC: -253, condensePointC: -259, heatCapacity: 14.3 }, descriptors: { polarity: 'nonpolar', notes: 'Very light diatomic gas.' }, optical: { absorptionBands: ['uv'], excitationMultiplier: 0.65 } }),
+  O2: normalizeMaterialProfile('O2', { states: { liquid: { density: 1.14, miscibleGroup: 'cryogenic', color: '#d98f9d' } }, thermal: { meltingPointC: -219, boilingPointC: -183, condensePointC: -188, heatCapacity: 0.92 }, descriptors: { polarity: 'nonpolar', notes: 'Oxidizer; supports combustion.' }, optical: { absorptionBands: ['uv', 'visible'], photoReactive: true, excitationMultiplier: 1.1, emissionColor: '#ffd5d5' } }),
+  Cl2: normalizeMaterialProfile('Cl2', { states: { liquid: { density: 1.47, miscibleGroup: 'halogen-liquid', color: '#7bcf73' } }, thermal: { meltingPointC: -101, boilingPointC: -34, condensePointC: -39, heatCapacity: 0.48 }, descriptors: { polarity: 'nonpolar', notes: 'Photochemically active halogen gas.' }, aqueous: { role: 'acid-former', pH: 2.8 }, optical: { absorptionBands: ['visible', 'uv', 'xray'], photoReactive: true, excitationMultiplier: 1.35, emissionColor: '#d9ffd0' } }),
+  HCl: normalizeMaterialProfile('HCl', { states: { liquid: { density: 1.19, miscibleGroup: 'acid-liquid', color: '#9adba2' } }, thermal: { meltingPointC: -114, boilingPointC: -85, condensePointC: -90, heatCapacity: 0.84 }, descriptors: { polarity: 'polar', notes: 'Strong acid when dissolved.' }, aqueous: { role: 'strong-acid', pH: 1, electrolyte: 'strong', ionProfile: { ions: { 'H3O+': 1, 'Cl-': 1 }, strength: 'strong-acid' } }, solubility: { solventGroup: 'water', dissolvedDensity: 1.02, nearRadius: 150, requiredNeighbors: 3, dissolveRate: 0.22, precipitateRate: 0.01, sourcePhases: ['gas'] }, optical: { absorptionBands: ['infrared', 'uv'], emissionColor: '#d8fff2' } }),
+  HOCl: normalizeMaterialProfile('HOCl', { thermal: { meltingPointC: -30, heatCapacity: 1.1 }, descriptors: { polarity: 'polar', condensationLevel: 0, notes: 'Weak acid and oxidizer.' }, aqueous: { role: 'weak-acid', pH: 5.3, weakAcid: { acidUnits: 0.18, ionLabel: 'OCl-' } }, optical: { absorptionBands: ['uv', 'visible'], photoReactive: true, excitationMultiplier: 1.05, emissionColor: '#ddffc9' } }),
+  HClO2: normalizeMaterialProfile('HClO2', { thermal: { meltingPointC: -15, heatCapacity: 1.08 }, descriptors: { polarity: 'polar', condensationLevel: 0 }, aqueous: { role: 'weak-acid', pH: 2.5, weakAcid: { acidUnits: 0.42, ionLabel: 'ClO2-' } }, optical: { absorptionBands: ['uv'], photoReactive: true, excitationMultiplier: 1.12 } }),
+  HClO3: normalizeMaterialProfile('HClO3', { thermal: { meltingPointC: -10, heatCapacity: 1.1 }, descriptors: { polarity: 'polar', condensationLevel: 0 }, aqueous: { role: 'strong-acid', pH: 1, electrolyte: 'strong', ionProfile: { ions: { 'H3O+': 1, 'ClO3-': 1 }, strength: 'strong-acid' } }, optical: { absorptionBands: ['uv'], photoReactive: true, excitationMultiplier: 1.1 } }),
+  HClO4: normalizeMaterialProfile('HClO4', { thermal: { meltingPointC: -18, heatCapacity: 1.12 }, descriptors: { polarity: 'polar', condensationLevel: 0 }, aqueous: { role: 'strong-acid', pH: 1, electrolyte: 'strong', ionProfile: { ions: { 'H3O+': 1, 'ClO4-': 1 }, strength: 'strong-acid' } }, optical: { absorptionBands: ['uv'], excitationMultiplier: 0.95 } }),
+  CO: normalizeMaterialProfile('CO', { states: { liquid: { density: 0.79, miscibleGroup: 'cryogenic', color: '#aba29c' } }, thermal: { meltingPointC: -205, boilingPointC: -191, condensePointC: -196, heatCapacity: 1.04 }, descriptors: { polarity: 'low' }, optical: { absorptionBands: ['infrared', 'uv'], excitationMultiplier: 0.72 } }),
+  CO2: normalizeMaterialProfile('CO2', { states: { liquid: { density: 1.01, miscibleGroup: 'water', color: '#bbc7d2' } }, thermal: { meltingPointC: -56, boilingPointC: -78, condensePointC: -82, heatCapacity: 0.84 }, descriptors: { polarity: 'nonpolar', notes: 'Can dissolve into water.' }, aqueous: { role: 'weak-acid', pH: 5.6, weakAcid: { acidUnits: 0.12, note: 'carbonic-acid equivalent' } }, solubility: { solventGroup: 'water', dissolvedDensity: 1.01, nearRadius: 135, requiredNeighbors: 4, dissolveRate: 0.09, precipitateRate: 0.04, sourcePhases: ['gas'] }, optical: { absorptionBands: ['infrared'], excitationMultiplier: 0.58, emissionColor: '#cfe6f3', emittedBand: 'infrared' } }),
+  NaCl: normalizeMaterialProfile('NaCl', { thermal: { meltingPointC: 801, boilingPointC: 1465, heatCapacity: 0.86 }, descriptors: { polarity: 'ionic', vaporLevel: 0, condensationLevel: 0 }, aqueous: { role: 'salt', pH: 7, electrolyte: 'strong', ionProfile: { ions: { 'Na+': 1, 'Cl-': 1 }, strength: 'strong-electrolyte' } }, solubility: { solventGroup: 'water', dissolvedDensity: 1.05, nearRadius: 120, requiredNeighbors: 3, dissolveRate: 0.08, precipitateRate: 0.02 }, optical: { absorptionBands: ['uv'], excitationMultiplier: 0.4, emissionColor: '#f6ffd8' } }),
+  NaOH: normalizeMaterialProfile('NaOH', { thermal: { meltingPointC: 318, boilingPointC: 1388, heatCapacity: 1.05 }, descriptors: { polarity: 'ionic', vaporLevel: 0, condensationLevel: 0 }, aqueous: { role: 'strong-base', pH: 14, electrolyte: 'strong', ionProfile: { ions: { 'Na+': 1, 'OH-': 1 }, strength: 'strong-base' } }, solubility: { solventGroup: 'water', dissolvedDensity: 1.08, nearRadius: 120, requiredNeighbors: 2, dissolveRate: 0.12, precipitateRate: 0.03 }, optical: { absorptionBands: ['uv'], excitationMultiplier: 0.45, emissionColor: '#f5ffe0' } }),
+  NaOCl: normalizeMaterialProfile('NaOCl', { thermal: { meltingPointC: 18, heatCapacity: 1.06 }, descriptors: { polarity: 'ionic-polar', vaporLevel: 0, condensationLevel: 0, notes: 'Bleach-like aqueous oxidizer.' }, aqueous: { role: 'basic-salt', pH: 11.2, electrolyte: 'strong', ionProfile: { ions: { 'Na+': 1, 'OCl-': 1 }, strength: 'basic-salt' } }, optical: { absorptionBands: ['visible', 'uv'], photoReactive: true, excitationMultiplier: 1.08, emissionColor: '#ecffd2' } }),
+  H2O: normalizeMaterialProfile('H2O', { states: { gas: { density: 0.06, miscibleGroup: 'gas', color: '#b8dcff' }, solid: { density: 0.92, miscibleGroup: 'ice', color: '#dff4ff' } }, thermal: { meltingPointC: 0, boilingPointC: 100, condensePointC: 92, heatCapacity: 4.18, dHvapKJ: 40.65, evapRate: 0.08, coolDeltaC: -10, minPressureAtm: 0.01 }, descriptors: { polarity: 'polar', notes: 'Primary solvent.' }, aqueous: { role: 'neutral', pH: 7 }, optical: { absorptionBands: ['microwave', 'infrared', 'visible', 'uv'], excitationMultiplier: 0.9, emissionColor: '#d7f0ff', emittedBand: 'infrared' } }),
+  H2O2: normalizeMaterialProfile('H2O2', { states: { gas: { density: 0.08, miscibleGroup: 'gas', color: '#d6ecff' } }, thermal: { meltingPointC: -0.4, boilingPointC: 150, condensePointC: 138, decompositionPointC: 150, heatCapacity: 2.6, dHvapKJ: 51.0, evapRate: 0.05, coolDeltaC: -12, minPressureAtm: 0.02 }, descriptors: { polarity: 'polar' }, aqueous: { role: 'oxidizer', pH: 6.2 }, optical: { absorptionBands: ['uv'], photoReactive: true, excitationMultiplier: 1.12, emissionColor: '#eef7ff' } }),
+  CH4: normalizeMaterialProfile('CH4', { states: { liquid: { density: 0.42, miscibleGroup: 'cryogenic', color: '#87b4f0' } }, thermal: { meltingPointC: -182, boilingPointC: -161, condensePointC: -165, ignitionPointC: 537, heatCapacity: 2.2 }, descriptors: { polarity: 'nonpolar', notes: 'Fuel gas.' }, optical: { absorptionBands: ['infrared', 'uv'], excitationMultiplier: 0.62, emissionColor: '#d7e9ff' } }),
+  CH3Cl: normalizeMaterialProfile('CH3Cl', { states: { liquid: { density: 0.92, miscibleGroup: 'organic-light', color: '#93d7aa' } }, thermal: { meltingPointC: -97, boilingPointC: -24, condensePointC: -28, heatCapacity: 1.4 }, descriptors: { polarity: 'polar' }, optical: { absorptionBands: ['infrared', 'uv'], photoReactive: true, excitationMultiplier: 1.02, emissionColor: '#dfffe7' } }),
+  CH2Cl2: normalizeMaterialProfile('CH2Cl2', { states: { gas: { density: 0.42, miscibleGroup: 'gas', color: '#c9efe0' } }, thermal: { meltingPointC: -97, boilingPointC: 40, condensePointC: 34, heatCapacity: 1.3, dHvapKJ: 28.8, evapRate: 0.08, coolDeltaC: -7, minPressureAtm: 0.02 }, descriptors: { polarity: 'moderate' }, optical: { absorptionBands: ['infrared', 'uv'], excitationMultiplier: 0.74, emissionColor: '#e7fff4' } }),
+  acetone: normalizeMaterialProfile('acetone', { states: { gas: { density: 0.18, miscibleGroup: 'gas', color: '#ecd6ff' } }, thermal: { meltingPointC: -95, boilingPointC: 56, condensePointC: 46, heatCapacity: 2.2, dHvapKJ: 31.3, evapRate: 0.14, coolDeltaC: -9, minPressureAtm: 0.02 }, descriptors: { polarity: 'polar', notes: 'Volatile light organic solvent.' }, optical: { absorptionBands: ['visible', 'uv'], excitationMultiplier: 0.9, emissionColor: '#ffe6ff' } }),
+  CH3OH: normalizeMaterialProfile('CH3OH', { states: { gas: { density: 0.14, miscibleGroup: 'gas', color: '#d1e7ff' } }, thermal: { meltingPointC: -98, boilingPointC: 65, condensePointC: 58, heatCapacity: 2.5, dHvapKJ: 35.3, evapRate: 0.1, coolDeltaC: -8, minPressureAtm: 0.02 }, descriptors: { polarity: 'polar' }, optical: { absorptionBands: ['infrared', 'uv'], excitationMultiplier: 0.86, emissionColor: '#e5f2ff' } }),
+  CH2O: normalizeMaterialProfile('CH2O', { states: { liquid: { density: 0.82, miscibleGroup: 'organic-light', color: '#c7b7b0' } }, thermal: { meltingPointC: -92, boilingPointC: -19, condensePointC: -24, heatCapacity: 1.45 }, descriptors: { polarity: 'polar' }, optical: { absorptionBands: ['uv'], photoReactive: true, excitationMultiplier: 1.05, emissionColor: '#fff1eb' } }),
+  HCOOH: normalizeMaterialProfile('HCOOH', { states: { gas: { density: 0.2, miscibleGroup: 'gas', color: '#d7ebff' } }, thermal: { meltingPointC: 8, boilingPointC: 101, condensePointC: 94, heatCapacity: 2.1, dHvapKJ: 25.9, evapRate: 0.07, coolDeltaC: -7, minPressureAtm: 0.02 }, descriptors: { polarity: 'polar' }, aqueous: { role: 'weak-acid', pH: 2.2, weakAcid: { acidUnits: 0.34, ionLabel: 'HCOO-' } }, optical: { absorptionBands: ['uv'], excitationMultiplier: 0.84, emissionColor: '#eef7ff' } }),
+  CH3CHO: normalizeMaterialProfile('CH3CHO', { states: { gas: { density: 0.16, miscibleGroup: 'gas', color: '#ebd9d2' } }, thermal: { meltingPointC: -123, boilingPointC: 20, condensePointC: 14, heatCapacity: 1.85, dHvapKJ: 25.1, evapRate: 0.11, coolDeltaC: -6, minPressureAtm: 0.02 }, descriptors: { polarity: 'polar' }, optical: { absorptionBands: ['uv'], photoReactive: true, excitationMultiplier: 1.0, emissionColor: '#ffece3' } }),
+  CH3COOH: normalizeMaterialProfile('CH3COOH', { states: { gas: { density: 0.19, miscibleGroup: 'gas', color: '#dce8ff' } }, thermal: { meltingPointC: 16, boilingPointC: 118, condensePointC: 110, heatCapacity: 2.0, dHvapKJ: 23.7, evapRate: 0.05, coolDeltaC: -5, minPressureAtm: 0.02 }, descriptors: { polarity: 'polar' }, aqueous: { role: 'weak-acid', pH: 2.9, weakAcid: { acidUnits: 0.16, ionLabel: 'CH3COO-' } }, optical: { absorptionBands: ['uv'], excitationMultiplier: 0.82, emissionColor: '#edf3ff' } }),
+  CHCl3: normalizeMaterialProfile('CHCl3', { states: { gas: { density: 0.28, miscibleGroup: 'gas', color: '#d7f2da' } }, thermal: { meltingPointC: -63, boilingPointC: 61, condensePointC: 52, heatCapacity: 0.96, dHvapKJ: 29.4, evapRate: 0.1, coolDeltaC: -8, minPressureAtm: 0.02 }, descriptors: { polarity: 'moderate' }, optical: { absorptionBands: ['uv'], photoReactive: true, excitationMultiplier: 0.95, emissionColor: '#edfff0' } }),
+  CCl4: normalizeMaterialProfile('CCl4', { states: { gas: { density: 0.31, miscibleGroup: 'gas', color: '#d7ead9' } }, thermal: { meltingPointC: -23, boilingPointC: 77, condensePointC: 69, heatCapacity: 0.86, dHvapKJ: 30.0, evapRate: 0.08, coolDeltaC: -7, minPressureAtm: 0.02 }, descriptors: { polarity: 'nonpolar' }, optical: { absorptionBands: ['uv'], photoReactive: true, excitationMultiplier: 0.92, emissionColor: '#efffef' } }),
+  O3: normalizeMaterialProfile('O3', { states: { liquid: { density: 1.6, miscibleGroup: 'cryogenic', color: '#ef9fa8' } }, thermal: { meltingPointC: -192, boilingPointC: -112, condensePointC: -118, decompositionPointC: 140, heatCapacity: 0.92 }, descriptors: { polarity: 'polar' }, optical: { absorptionBands: ['visible', 'uv'], photoReactive: true, excitationMultiplier: 1.18, emissionColor: '#ffd5d5' } }),
+  NaHCO3: normalizeMaterialProfile('NaHCO3', { thermal: { meltingPointC: 50, decompositionPointC: 80, heatCapacity: 0.95 }, descriptors: { polarity: 'ionic', vaporLevel: 0, condensationLevel: 0 }, aqueous: { role: 'buffer', pH: 8.3, electrolyte: 'moderate', ionProfile: { ions: { 'Na+': 1, 'HCO3-': 1 }, strength: 'buffer' } }, solubility: { solventGroup: 'water', dissolvedDensity: 1.06, nearRadius: 120, requiredNeighbors: 2, dissolveRate: 0.08, precipitateRate: 0.025 }, optical: { absorptionBands: ['uv'], excitationMultiplier: 0.42, emissionColor: '#f6ffe9' } }),
+  Na2CO3: normalizeMaterialProfile('Na2CO3', { thermal: { meltingPointC: 851, decompositionPointC: 851, heatCapacity: 1.1 }, descriptors: { polarity: 'ionic', vaporLevel: 0, condensationLevel: 0 }, aqueous: { role: 'basic-salt', pH: 11.3, electrolyte: 'strong', ionProfile: { ions: { 'Na+': 2, 'CO3^2-': 1 }, strength: 'basic-salt' } }, solubility: { solventGroup: 'water', dissolvedDensity: 1.09, nearRadius: 120, requiredNeighbors: 2, dissolveRate: 0.08, precipitateRate: 0.025 }, optical: { absorptionBands: ['uv'], excitationMultiplier: 0.4, emissionColor: '#f5ffe4' } }),
+  NaC2H3O2: normalizeMaterialProfile('NaC2H3O2', { thermal: { meltingPointC: 324, heatCapacity: 1.15 }, descriptors: { polarity: 'ionic', vaporLevel: 0, condensationLevel: 0 }, aqueous: { role: 'basic-salt', pH: 8.9, electrolyte: 'strong', ionProfile: { ions: { 'Na+': 1, 'CH3COO-': 1 }, strength: 'basic-salt' } }, solubility: { solventGroup: 'water', dissolvedDensity: 1.04, nearRadius: 120, requiredNeighbors: 2, dissolveRate: 0.07, precipitateRate: 0.025 }, optical: { absorptionBands: ['uv'], excitationMultiplier: 0.4, emissionColor: '#f4ffe0' } }),
+  'atom-H': normalizeMaterialProfile('atom-H', { thermal: { meltingPointC: -259, boilingPointC: -253, condensePointC: -259, heatCapacity: 14.3 }, descriptors: { polarity: 'radical' }, optical: { absorptionBands: ['visible', 'uv'], photoReactive: true, excitationMultiplier: 1.15 } }),
+  'atom-N': normalizeMaterialProfile('atom-N', { thermal: { meltingPointC: -210, boilingPointC: -196, condensePointC: -201, heatCapacity: 1.04 }, descriptors: { polarity: 'radical' }, optical: { absorptionBands: ['visible', 'uv'], photoReactive: true, excitationMultiplier: 1.05 } }),
+  'atom-O': normalizeMaterialProfile('atom-O', { thermal: { meltingPointC: -219, boilingPointC: -183, condensePointC: -188, heatCapacity: 0.92 }, descriptors: { polarity: 'radical' }, optical: { absorptionBands: ['visible', 'uv'], photoReactive: true, excitationMultiplier: 1.18 } }),
+  'atom-C': normalizeMaterialProfile('atom-C', { thermal: { meltingPointC: 3550, heatCapacity: 0.71 }, descriptors: { polarity: 'network-solid', vaporLevel: 0, condensationLevel: 0 }, optical: { absorptionBands: ['visible', 'uv'], excitationMultiplier: 0.8 } }),
+  'atom-Cl': normalizeMaterialProfile('atom-Cl', { thermal: { meltingPointC: -101, boilingPointC: -34, condensePointC: -39, heatCapacity: 0.48 }, descriptors: { polarity: 'radical' }, optical: { absorptionBands: ['visible', 'uv'], photoReactive: true, excitationMultiplier: 1.32, emissionColor: '#d9ffd0' } }),
+  'atom-Na': normalizeMaterialProfile('atom-Na', { thermal: { meltingPointC: 98, boilingPointC: 883, heatCapacity: 1.23 }, descriptors: { polarity: 'metallic', vaporLevel: 0, condensationLevel: 0 }, aqueous: { role: 'metal' }, optical: { absorptionBands: ['visible', 'uv'], excitationMultiplier: 0.7 } })
+};
+
+function getMaterialConditions(type) {
+  return MATERIAL_CONDITIONS[type] || normalizeMaterialProfile(type);
+}
+
+function getMaterialState(type, phase = getMaterialConditions(type).defaultPhase) {
+  const profile = getMaterialConditions(type);
+  return profile.states[phase] || (phase === 'particle' ? profile.states.solid : null) || null;
+}
+
+function getMaterialOpticalProfile(type) {
+  return getMaterialConditions(type).optical;
+}
+
+function getMaterialLightResponse(type, bandId) {
+  const optical = getMaterialOpticalProfile(type);
+  const band = getLightBand(bandId);
+  let absorption = optical.absorptionBands.includes(band.id) ? 1 : 0.12;
+  if (!optical.absorptionBands.includes(band.id) && band.photochemical && optical.photoReactive) absorption = 0.45;
+  if (!optical.absorptionBands.includes(band.id) && band.id === 'visible' && optical.emittedBand === 'visible') absorption = Math.max(absorption, 0.35);
+  return {
+    absorption,
+    excitationMultiplier: optical.excitationMultiplier || 1,
+    emissionColor: optical.emissionColor || band.color,
+    lightToHeatFactor: optical.lightToHeatFactor || 0.12,
+    photoReactive: !!optical.photoReactive,
+    emittedBand: optical.emittedBand || 'visible'
+  };
+}
 const BOND_REST = {
   'H-H': 30,
   'H-O': 28,
@@ -1096,39 +1270,51 @@ const FORMATION_EA_K = {
 const SPEED_PRESET = [0.5, 1, 2, 4, 8];
 const MAX_REACTION_LOG = 1200;
 const THERMAL_EVENT_TTL = 1.6;
-const EVAPORATION_CONFIG = {
-  H2O: { boilC: 100, condenseC: 92, gasDensity: 0.06, gasMiscibleGroup: 'gas', liquidDensity: 1.0, liquidMiscibleGroup: 'water', evapRate: 0.08, coolDeltaC: -10, dHvapKJ: 40.65, minPressureAtm: 0.01 },
-  H2O2: { boilC: 150, condenseC: 138, gasDensity: 0.08, gasMiscibleGroup: 'gas', liquidDensity: 1.45, liquidMiscibleGroup: 'water', evapRate: 0.05, coolDeltaC: -12, dHvapKJ: 51.0, minPressureAtm: 0.02 },
-  acetone: { boilC: 56, condenseC: 46, gasDensity: 0.18, gasMiscibleGroup: 'gas', liquidDensity: 0.79, liquidMiscibleGroup: 'organic-light', evapRate: 0.14, coolDeltaC: -9, dHvapKJ: 31.3, minPressureAtm: 0.02 },
-  CHCl3: { boilC: 61, condenseC: 52, gasDensity: 0.28, gasMiscibleGroup: 'gas', liquidDensity: 1.49, liquidMiscibleGroup: 'organic-heavy', evapRate: 0.10, coolDeltaC: -8, dHvapKJ: 29.4, minPressureAtm: 0.02 }
-};
-const AQUEOUS_ION_PROFILES = {
-  HCl: { ions: { 'H3O+': 1, 'Cl-': 1 }, strength: 'strong-acid' },
-  HClO3: { ions: { 'H3O+': 1, 'ClO3-': 1 }, strength: 'strong-acid' },
-  HClO4: { ions: { 'H3O+': 1, 'ClO4-': 1 }, strength: 'strong-acid' },
-  NaOH: { ions: { 'Na+': 1, 'OH-': 1 }, strength: 'strong-base' },
-  NaCl: { ions: { 'Na+': 1, 'Cl-': 1 }, strength: 'strong-electrolyte' },
-  NaHCO3: { ions: { 'Na+': 1, 'HCO3-': 1 }, strength: 'buffer' },
-  Na2CO3: { ions: { 'Na+': 2, 'CO3^2-': 1 }, strength: 'basic-salt' },
-  NaOCl: { ions: { 'Na+': 1, 'OCl-': 1 }, strength: 'basic-salt' },
-  NaC2H3O2: { ions: { 'Na+': 1, 'CH3COO-': 1 }, strength: 'basic-salt' }
-};
-const WEAK_AQUEOUS_ACIDS = {
-  HOCl: { acidUnits: 0.18, ionLabel: 'OCl-' },
-  HClO2: { acidUnits: 0.42, ionLabel: 'ClO2-' },
-  HCOOH: { acidUnits: 0.34, ionLabel: 'HCOO-' },
-  CH3COOH: { acidUnits: 0.16, ionLabel: 'CH3COO-' },
-  CO2: { acidUnits: 0.12, note: 'carbonic-acid equivalent' }
-};
-const DISSOLUTION_CONFIG = {
-  CO2: { solventGroup: 'water', dissolvedDensity: 1.01, nearRadius: 135, requiredNeighbors: 4, dissolveRate: 0.09, precipitateRate: 0.04 },
-  HCl: { solventGroup: 'water', dissolvedDensity: 1.02, nearRadius: 150, requiredNeighbors: 3, dissolveRate: 0.22, precipitateRate: 0.01, sourcePhases: ['gas'] },
-  NaCl: { solventGroup: 'water', dissolvedDensity: 1.05, nearRadius: 120, requiredNeighbors: 3, dissolveRate: 0.08, precipitateRate: 0.02 },
-  NaOH: { solventGroup: 'water', dissolvedDensity: 1.08, nearRadius: 120, requiredNeighbors: 2, dissolveRate: 0.12, precipitateRate: 0.03 },
-  NaHCO3: { solventGroup: 'water', dissolvedDensity: 1.06, nearRadius: 120, requiredNeighbors: 2, dissolveRate: 0.08, precipitateRate: 0.025 },
-  Na2CO3: { solventGroup: 'water', dissolvedDensity: 1.09, nearRadius: 120, requiredNeighbors: 2, dissolveRate: 0.08, precipitateRate: 0.025 },
-  NaC2H3O2: { solventGroup: 'water', dissolvedDensity: 1.04, nearRadius: 120, requiredNeighbors: 2, dissolveRate: 0.07, precipitateRate: 0.025 }
-};
+const EVAPORATION_CONFIG = Object.fromEntries(
+  Object.entries(MATERIAL_CONDITIONS)
+    .filter(([, profile]) => profile.states.gas && profile.states.liquid && Number.isFinite(profile.thermal.boilingPointC))
+    .map(([type, profile]) => [
+      type,
+      {
+        boilC: profile.thermal.boilingPointC,
+        condenseC: Number.isFinite(profile.thermal.condensePointC) ? profile.thermal.condensePointC : profile.thermal.boilingPointC - 8,
+        gasDensity: profile.states.gas.density,
+        gasMiscibleGroup: profile.states.gas.miscibleGroup,
+        liquidDensity: profile.states.liquid.density,
+        liquidMiscibleGroup: profile.states.liquid.miscibleGroup,
+        evapRate: profile.thermal.evapRate,
+        coolDeltaC: profile.thermal.coolDeltaC,
+        dHvapKJ: profile.thermal.dHvapKJ,
+        minPressureAtm: profile.thermal.minPressureAtm
+      }
+    ])
+);
+const AQUEOUS_ION_PROFILES = Object.fromEntries(
+  Object.entries(MATERIAL_CONDITIONS)
+    .filter(([, profile]) => profile.aqueous.ionProfile)
+    .map(([type, profile]) => [type, profile.aqueous.ionProfile])
+);
+const WEAK_AQUEOUS_ACIDS = Object.fromEntries(
+  Object.entries(MATERIAL_CONDITIONS)
+    .filter(([, profile]) => profile.aqueous.weakAcid)
+    .map(([type, profile]) => [type, profile.aqueous.weakAcid])
+);
+const DISSOLUTION_CONFIG = Object.fromEntries(
+  Object.entries(MATERIAL_CONDITIONS)
+    .filter(([, profile]) => profile.solubility.solventGroup && profile.solubility.dissolveRate > 0)
+    .map(([type, profile]) => [
+      type,
+      {
+        solventGroup: profile.solubility.solventGroup,
+        dissolvedDensity: profile.solubility.dissolvedDensity,
+        nearRadius: profile.solubility.nearRadius,
+        requiredNeighbors: profile.solubility.requiredNeighbors,
+        dissolveRate: profile.solubility.dissolveRate,
+        precipitateRate: profile.solubility.precipitateRate,
+        sourcePhases: profile.solubility.sourcePhases
+      }
+    ])
+);
 const FALLBACK_REACTION_DATA = {
   speciesHints: {
     CO: 'Scripted carbon monoxide intermediate.',
@@ -1520,6 +1706,7 @@ function buildAtomsForSpecies(type, cx, cy) {
 function addMolecule(type, x, y, options = {}) {
   const spec = SPECIES[type];
   if (!spec) return null;
+  const material = getMaterialConditions(type);
   const select = options.select !== false;
   const layoutScale = options.layoutScale ?? 1.08;
 
@@ -1564,11 +1751,11 @@ function addMolecule(type, x, y, options = {}) {
     type,
     label: spec.label,
     display: spec.display,
-    phase: spec.phase,
-    density: spec.density,
-    miscibleGroup: spec.miscibleGroup,
-    nativePhase: spec.phase,
-    color: spec.color,
+    phase: material.defaultPhase,
+    density: getMaterialState(type, material.defaultPhase)?.density ?? spec.density,
+    miscibleGroup: getMaterialState(type, material.defaultPhase)?.miscibleGroup ?? spec.miscibleGroup,
+    nativePhase: material.defaultPhase,
+    color: getMaterialState(type, material.defaultPhase)?.color ?? spec.color,
     formula: spec.formula,
     atoms,
     bonds: spec.bonds.map(b => ({ age: 45, strain: 0, core: true, ...b, rest: b.rest * layoutScale })),
@@ -1592,20 +1779,22 @@ function addAtom(el, x, y, options = {}) {
   const cy = y ?? rand(bounds.y + 80, bounds.y + bounds.h - 80);
   const style = elementStyles[el];
   const select = options.select !== false;
-  const atomPhase = (el === 'O' || el === 'H' || el === 'Cl' || el === 'N') ? 'gas' : 'particle';
-  const atomDensity = atomPhase === 'gas' ? 0.12 : 0.5;
-  const atomGroup = atomPhase === 'gas' ? 'gas' : 'particle';
+  const atomType = `atom-${el}`;
+  const material = getMaterialConditions(atomType);
+  const atomPhase = material.defaultPhase;
+  const atomDensity = getMaterialState(atomType, atomPhase)?.density ?? (atomPhase === 'gas' ? 0.12 : 0.5);
+  const atomGroup = getMaterialState(atomType, atomPhase)?.miscibleGroup ?? (atomPhase === 'gas' ? 'gas' : 'particle');
 
   const mol = {
     id: nextMolId++,
-    type: `atom-${el}`,
+    type: atomType,
     label: el,
     display: `${el} atom`,
     phase: atomPhase,
     density: atomDensity,
     miscibleGroup: atomGroup,
     nativePhase: atomPhase,
-    color: style.color,
+    color: getMaterialState(atomType, atomPhase)?.color ?? style.color,
     formula: el,
     photoExcitation: 0,
     reactionProgress: {},
@@ -1637,18 +1826,15 @@ function addAtom(el, x, y, options = {}) {
 }
 
 function setMoleculePhaseMode(mol, nextPhase) {
-  const config = EVAPORATION_CONFIG[mol.type];
-  if (!config || mol.phase === nextPhase) return;
+  const state = getMaterialState(mol.type, nextPhase);
+  if (!state || mol.phase === nextPhase) return;
 
-  if (nextPhase === 'gas') {
-    mol.phase = 'gas';
-    mol.density = config.gasDensity;
-    mol.miscibleGroup = config.gasMiscibleGroup;
-  } else {
-    mol.phase = mol.nativePhase || 'liquid';
-    mol.density = config.liquidDensity;
-    mol.miscibleGroup = config.liquidMiscibleGroup;
-  }
+  mol.phase = nextPhase;
+  mol.phaseChangedAt = world.time;
+  mol.phaseLockUntil = world.time + 0.28;
+  mol.density = state.density ?? mol.density;
+  mol.miscibleGroup = state.miscibleGroup || mol.miscibleGroup;
+  mol.color = state.color || mol.color;
 }
 
 function setMoleculeDissolvedState(mol, dissolved) {
@@ -1661,9 +1847,12 @@ function setMoleculeDissolvedState(mol, dissolved) {
     mol.density = config.dissolvedDensity;
     mol.miscibleGroup = config.solventGroup;
   } else {
-    mol.phase = mol.nativePhase || 'particle';
-    mol.density = SPECIES[mol.type]?.density ?? mol.density;
-    mol.miscibleGroup = SPECIES[mol.type]?.miscibleGroup || mol.miscibleGroup;
+    const nativePhase = mol.nativePhase || getMaterialConditions(mol.type).defaultPhase || 'particle';
+    const state = getMaterialState(mol.type, nativePhase);
+    mol.phase = nativePhase;
+    mol.density = state?.density ?? SPECIES[mol.type]?.density ?? mol.density;
+    mol.miscibleGroup = state?.miscibleGroup || SPECIES[mol.type]?.miscibleGroup || mol.miscibleGroup;
+    mol.color = state?.color || SPECIES[mol.type]?.color || mol.color;
   }
 }
 
@@ -1795,7 +1984,12 @@ function clearWorld() {
   world.thermalEvents = [];
   world.thermalStats.addedC = 0;
   world.thermalStats.removedC = 0;
+  world.layout.condensedHeight = 0;
+  world.layout.surfaceY = null;
   addReactionLog('system', 'Sandbox cleared');
+  if (typeof updateThermalLabels === 'function') {
+    updateThermalLabels();
+  }
   markSidebarDirty();
 }
 
@@ -1825,9 +2019,10 @@ function getLiquidLayerLayout() {
   const waterChemistry = getWaterChemistrySnapshot();
 
   const liquids = world.molecules.filter(m => m.alive && m.phase === 'liquid');
+  const condensed = world.molecules.filter(m => m.alive && (m.phase === 'liquid' || m.phase === 'solid'));
   const groups = {};
 
-  for (const mol of liquids) {
+  for (const mol of condensed) {
     const key = getLiquidLayerKey(mol);
     if (!groups[key]) groups[key] = [];
     groups[key].push(mol);
@@ -1836,36 +2031,58 @@ function getLiquidLayerLayout() {
   const layers = Object.entries(groups)
     .map(([layerKey, arr]) => {
       const sample = arr[0];
+      const liquidMembers = arr.filter(mol => mol.phase === 'liquid');
       const preferredType = layerKey === 'water'
         ? 'H2O'
         : sample.type;
       const spec = SPECIES[preferredType] || SPECIES[sample.type] || sample;
       const dissolvedCounts = {};
-      for (const mol of arr) {
+      for (const mol of liquidMembers) {
         if (!mol.dissolved) continue;
         dissolvedCounts[mol.type] = (dissolvedCounts[mol.type] || 0) + 1;
       }
       const dissolvedTypes = Object.keys(dissolvedCounts)
         .sort((a, b2) => dissolvedCounts[b2] - dissolvedCounts[a]);
+      const allSolid = arr.every(mol => mol.phase === 'solid');
+      const allLiquid = arr.every(mol => mol.phase === 'liquid');
       return {
         layerKey,
         count: arr.length,
-        density: spec?.density ?? sample?.density ?? 1.0,
+        liquidCount: liquidMembers.length,
+        solidCount: arr.length - liquidMembers.length,
+        density: sample?.density ?? spec?.density ?? 1.0,
         color: spec?.color || sample?.color || '#9bbcff',
         dissolvedTypes,
-        chemistry: layerKey === 'water' ? waterChemistry : buildLiquidChemistrySnapshot(arr)
+        phaseTag: allSolid ? 'solid' : (allLiquid ? (layerKey === 'water' ? 'aqueous' : 'liquid') : 'condensed'),
+        chemistry: liquidMembers.length
+          ? (layerKey === 'water' ? waterChemistry : buildLiquidChemistrySnapshot(liquidMembers))
+          : null
       };
     })
     .sort((a, b2) => a.density - b2.density);
 
-  if (!layers.length) return { surfaceY: null, liquidHeight: 0, layers: [] };
+  const condensedTargetHeight = Math.min(b.h * 0.7, condensed.length * 13);
+  const prevCondensedHeight = world.layout?.condensedHeight || 0;
+  const condensedHeight = condensedTargetHeight <= 0.5
+    ? 0
+    : prevCondensedHeight + (condensedTargetHeight - prevCondensedHeight) * 0.18;
+  const surfaceY = condensedHeight > 0 ? b.y + b.h - condensedHeight : null;
+
+  world.layout.condensedHeight = condensedHeight;
+  world.layout.surfaceY = surfaceY;
+
+  if (!layers.length) return { surfaceY, liquidHeight: 0, condensedHeight, layers: [] };
 
   const total = layers.reduce((sum, layer) => sum + layer.count, 0);
-  const liquidHeight = Math.min(b.h * 0.7, total * 13);
-  let y = b.y + b.h - liquidHeight;
+  const liquidHeight = condensedHeight > 0
+    ? condensedHeight * clamp(liquids.length / Math.max(1, condensed.length), 0, 1)
+    : Math.min(b.h * 0.7, total * 13);
+  let y = surfaceY != null ? surfaceY : (b.y + b.h - condensedHeight);
 
   for (const layer of layers) {
-    const h = liquidHeight * (layer.count / total);
+    const h = condensedHeight > 0
+      ? condensedHeight * (layer.count / total)
+      : Math.min(b.h * 0.7, total * 13) * (layer.count / total);
     layer.y = y;
     layer.h = h;
     layer.centerY = y + h * 0.5;
@@ -1873,8 +2090,9 @@ function getLiquidLayerLayout() {
   }
 
   return {
-    surfaceY: b.y + b.h - liquidHeight,
+    surfaceY,
     liquidHeight,
+    condensedHeight,
     layers
   };
 }
@@ -1912,6 +2130,10 @@ function confineMoleculeToPhaseZone(mol, b, liquidLayout, dt) {
     minAllowedY = top;
     maxAllowedY = (isDragged || isSubmerged) ? bottom : gasCeiling;
     targetY = top + (maxAllowedY - top) * 0.35;
+  } else if (mol.phase === 'solid' || mol.phase === 'particle') {
+    minAllowedY = top;
+    maxAllowedY = bottom;
+    targetY = bottom - Math.max(radius + 10, b.h * 0.10);
   }
 
   if (targetY != null && Number.isFinite(targetY)) {
@@ -1923,6 +2145,10 @@ function confineMoleculeToPhaseZone(mol, b, liquidLayout, dt) {
       pullScale = overshoot > 0
         ? (0.006 + overshoot * 0.00018)
         : 0.0011;
+    } else if (mol.phase === 'solid') {
+      pullScale = 0.0085;
+    } else if (mol.phase === 'particle') {
+      pullScale = 0.0055;
     }
 
     const pull = (targetY - center.y) * pullScale * dt * 60;

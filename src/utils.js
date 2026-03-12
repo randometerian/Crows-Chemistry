@@ -36,6 +36,17 @@ const observationCounter = document.getElementById('observationCounter');
 const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
 const TAU = Math.PI * 2;
 const GAS_CONSTANT_J_PER_MOL_K = 8.314462618;
+const TEMP_MIN_C = -273.15;
+const TEMP_MAX_C = 2500;
+const TEMP_SLIDER_MIN = 0;
+const TEMP_SLIDER_MAX = 1000;
+const TEMP_SLIDER_ANCHOR_C = 25;
+const TEMP_SLIDER_CURVE = 2.4;
+const PRESSURE_MIN_ATM = 0.01;
+const PRESSURE_MAX_ATM = 120;
+const PRESSURE_SLIDER_MIN = 0;
+const PRESSURE_SLIDER_MAX = 1000;
+const PRESSURE_SLIDER_ANCHOR_ATM = 1;
 const LIGHT_BANDS = [
   { id: 'radio', label: 'Radio', color: '#7db5ff', energy: 0, photochemical: false },
   { id: 'microwave', label: 'Microwave', color: '#87d3ff', energy: 1, photochemical: false },
@@ -63,12 +74,60 @@ function cToF(c) { return c * 9 / 5 + 32; }
 function cToK(c) { return c + 273.15; }
 function fToC(f) { return (f - 32) * 5 / 9; }
 function kToC(k) { return k - 273.15; }
+function sliderNorm(value, min, max) {
+  return clamp((value - min) / Math.max(1e-9, max - min), 0, 1);
+}
+function sliderValueFromNorm(norm, min, max) {
+  return min + clamp(norm, 0, 1) * (max - min);
+}
+function temperatureToSliderValue(tempC) {
+  const clamped = clamp(tempC, TEMP_MIN_C, TEMP_MAX_C);
+  let norm;
+  if (clamped <= TEMP_SLIDER_ANCHOR_C) {
+    const ratio = (clamped - TEMP_MIN_C) / Math.max(1e-9, TEMP_SLIDER_ANCHOR_C - TEMP_MIN_C);
+    norm = 0.5 * Math.pow(clamp(ratio, 0, 1), 1 / TEMP_SLIDER_CURVE);
+  } else {
+    const ratio = (clamped - TEMP_SLIDER_ANCHOR_C) / Math.max(1e-9, TEMP_MAX_C - TEMP_SLIDER_ANCHOR_C);
+    norm = 0.5 + 0.5 * Math.pow(clamp(ratio, 0, 1), 1 / TEMP_SLIDER_CURVE);
+  }
+  return Math.round(sliderValueFromNorm(norm, TEMP_SLIDER_MIN, TEMP_SLIDER_MAX));
+}
+function sliderValueToTemperature(sliderValue) {
+  const norm = sliderNorm(sliderValue, TEMP_SLIDER_MIN, TEMP_SLIDER_MAX);
+  if (norm <= 0.5) {
+    const ratio = Math.pow(norm / 0.5, TEMP_SLIDER_CURVE);
+    return TEMP_MIN_C + ratio * (TEMP_SLIDER_ANCHOR_C - TEMP_MIN_C);
+  }
+  const ratio = Math.pow((norm - 0.5) / 0.5, TEMP_SLIDER_CURVE);
+  return TEMP_SLIDER_ANCHOR_C + ratio * (TEMP_MAX_C - TEMP_SLIDER_ANCHOR_C);
+}
+function pressureToSliderValue(pressureAtm) {
+  const clamped = clamp(pressureAtm, PRESSURE_MIN_ATM, PRESSURE_MAX_ATM);
+  let norm;
+  if (clamped <= PRESSURE_SLIDER_ANCHOR_ATM) {
+    const ratio = Math.log(clamped / PRESSURE_MIN_ATM) / Math.log(PRESSURE_SLIDER_ANCHOR_ATM / PRESSURE_MIN_ATM);
+    norm = 0.5 * clamp(ratio, 0, 1);
+  } else {
+    const ratio = Math.log(clamped / PRESSURE_SLIDER_ANCHOR_ATM) / Math.log(PRESSURE_MAX_ATM / PRESSURE_SLIDER_ANCHOR_ATM);
+    norm = 0.5 + 0.5 * clamp(ratio, 0, 1);
+  }
+  return Math.round(sliderValueFromNorm(norm, PRESSURE_SLIDER_MIN, PRESSURE_SLIDER_MAX));
+}
+function sliderValueToPressure(sliderValue) {
+  const norm = sliderNorm(sliderValue, PRESSURE_SLIDER_MIN, PRESSURE_SLIDER_MAX);
+  if (norm <= 0.5) {
+    const ratio = clamp(norm / 0.5, 0, 1);
+    return PRESSURE_MIN_ATM * Math.pow(PRESSURE_SLIDER_ANCHOR_ATM / PRESSURE_MIN_ATM, ratio);
+  }
+  const ratio = clamp((norm - 0.5) / 0.5, 0, 1);
+  return PRESSURE_SLIDER_ANCHOR_ATM * Math.pow(PRESSURE_MAX_ATM / PRESSURE_SLIDER_ANCHOR_ATM, ratio);
+}
 function tempToHeatLevel(celsius) {
   const k = cToK(celsius);
   return clamp((k - 273.15) / 1400, 0, 1);
 }
 function getEffectiveTemperatureC() {
-  return clamp(world.temperatureC + world.heatPulseC, -50, 3200);
+  return clamp(world.temperatureC + world.heatPulseC, TEMP_MIN_C, 3200);
 }
 function getGasMoleculeCount() {
   return world.molecules.filter(m => m.alive && m.phase === 'gas').length;
@@ -79,7 +138,7 @@ function getEffectivePressureAtm() {
   const volumeScale = clamp(420000 / Math.max(180000, area), 0.7, 1.7);
   const tempScale = clamp(cToK(getEffectiveTemperatureC()) / 298.15, 0.45, 5.5);
   const gasContribution = getGasMoleculeCount() * 0.035 * tempScale * volumeScale;
-  return clamp(world.pressureAtm + gasContribution, 0.01, 150);
+  return clamp(world.pressureAtm + gasContribution, PRESSURE_MIN_ATM, 150);
 }
 function formatPressureAtm(pressureAtm) {
   if (pressureAtm < 0.1) return pressureAtm.toFixed(3);
@@ -366,22 +425,40 @@ function getSpeciesProfile(type) {
   };
 }
 
+function formatPhaseCapabilities(type) {
+  const states = Object.keys(getMaterialConditions(type).states || {});
+  return states.length ? states.join(', ') : 'none';
+}
+
+function formatMaterialTemp(value) {
+  return Number.isFinite(value) ? `${Math.round(value)}°C` : 'n/a';
+}
+
 function speciesBehaviorSummary(type) {
   const profile = getSpeciesProfile(type);
+  const material = getMaterialConditions(type);
   const parts = [];
   const evap = EVAPORATION_CONFIG[type];
   const dissolution = DISSOLUTION_CONFIG[type];
   const ionProfile = AQUEOUS_ION_PROFILES[type];
   const weakAcid = WEAK_AQUEOUS_ACIDS[type];
+  if (material.descriptors.polarity && material.descriptors.polarity !== 'unknown') {
+    parts.push(`Polarity: ${material.descriptors.polarity}.`);
+  }
+  parts.push(`Phases: ${formatPhaseCapabilities(type)}.`);
   if (profile.reactWith.length) parts.push(`Reacts with ${formatSpeciesList(profile.reactWith, 4)}.`);
   if (profile.turnsInto.length) parts.push(`Can form ${formatSpeciesList(profile.turnsInto, 4)}.`);
   if (profile.formedFrom.length) parts.push(`Can be made from ${formatSpeciesList(profile.formedFrom, 4)}.`);
   if (evap) parts.push(`Evaporates near ${evap.boilC}°C and condenses below ${evap.condenseC}°C.`);
+  else if (material.descriptors.vaporLevel === 0) parts.push('No gas-phase transition is modeled.');
   if (dissolution) parts.push(`Dissolves into ${dissolution.solventGroup} when enough solvent is nearby.`);
   if (ionProfile) {
     parts.push(`In water it separates into ${Object.keys(ionProfile.ions).map(formatIonLabel).join(' and ')}.`);
   } else if (weakAcid && type !== 'CO2') {
     parts.push(`In water it acts as a weak acid.`);
+  }
+  if (material.optical?.absorptionBands?.length) {
+    parts.push(`Responds most to ${material.optical.absorptionBands.join(', ')} light.`);
   }
   if (type === 'CO2') parts.push('Under pressure it can dissolve into water and make carbonated water.');
   if (!parts.length) return 'No scripted reactions currently reference this species.';

@@ -39,6 +39,10 @@ const world = {
   stats: {
     reactions: 0
   },
+  layout: {
+    condensedHeight: 0,
+    surfaceY: null
+  },
   bounds: null,
   selectedMolId: null,
   ui: {
@@ -224,12 +228,12 @@ heatDoseSlider.addEventListener('input', (e) => {
 });
 
 heatSlider.addEventListener('input', (e) => {
-  world.temperatureC = Number(e.target.value);
+  world.temperatureC = sliderValueToTemperature(Number(e.target.value));
   updateThermalLabels();
 });
 
 pressureSlider.addEventListener('input', (e) => {
-  world.pressureAtm = clamp(Number(e.target.value), Number(pressureSlider.min), Number(pressureSlider.max));
+  world.pressureAtm = sliderValueToPressure(Number(e.target.value));
   updateThermalLabels();
 });
 
@@ -244,9 +248,7 @@ function commitTempInputValue() {
     updateThermalLabels();
     return;
   }
-  const min = Number(heatSlider.min);
-  const max = Number(heatSlider.max);
-  world.temperatureC = clamp(selectedUnitToCelsius(entered), min, max);
+  world.temperatureC = clamp(selectedUnitToCelsius(entered), TEMP_MIN_C, TEMP_MAX_C);
   updateThermalLabels();
 }
 

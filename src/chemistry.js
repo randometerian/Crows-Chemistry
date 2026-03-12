@@ -556,7 +556,7 @@ function runValenceChemistry(ambientTempC, ambientHeat, dt) {
       const molSat = moleculeSaturation(mol);
       const localSat = (atomSaturation(mol, bond.a) + atomSaturation(mol, bond.b)) * 0.5;
       const neighborhoodSupport = bondNeighborhoodSupport(mol, bond);
-      const condensedShield = (mol.phase === 'liquid' || mol.miscibleGroup === 'salt') ? 0.88 : 1.0;
+      const condensedShield = (mol.phase === 'liquid' || mol.phase === 'solid' || mol.miscibleGroup === 'salt') ? 0.88 : 1.0;
       const vibrationalStress = clamp(Math.abs(reln) / (1.8 + stability * 1.2), 0, 1.4);
       let breakChance = clamp((0.000008 + sustainedStress * sustainedStress * 0.0011 + vibrationalStress * vibrationalStress * 0.00055 + thermalBreak * 0.0014) * (dt * 60), 0, 0.05);
       if (bond.age < 45) breakChance *= 0.06;
@@ -1051,7 +1051,7 @@ function applyReactiveMoleculeDrift(dt, ambientTempC) {
 }
 
 function handleLiquidMixing(dt) {
-  const liquids = world.molecules.filter(m => m.phase === 'liquid');
+    const liquids = world.molecules.filter(m => m.phase === 'liquid');
   const index = buildMoleculeSpatialIndex(liquids, 180);
 
   forEachNearbyMoleculePair(index, 170, (entryA, entryB) => {
@@ -1268,54 +1268,136 @@ function handleAqueousIonChemistry(dt, ambientTempC, pressureAtm) {
 
 function handlePhaseTransitions(dt, ambientTempC, pressureAtm) {
   const b = world.bounds;
+  const phaseShiftCounts = new Map();
+  const tryReservePhaseShift = (type, fromPhase, toPhase, limit) => {
+    const key = `${type}:${fromPhase}->${toPhase}`;
+    const used = phaseShiftCounts.get(key) || 0;
+    if (used >= limit) return false;
+    phaseShiftCounts.set(key, used + 1);
+    return true;
+  };
+
   for (const mol of world.molecules) {
     if (!mol.alive) continue;
+    if (mol.phaseLockUntil && world.time < mol.phaseLockUntil) continue;
+    const material = getMaterialConditions(mol.type);
     const config = EVAPORATION_CONFIG[mol.type];
-    if (!config) continue;
 
     const center = moleculeCenter(mol);
     const yNorm = clamp((center.y - b.y) / Math.max(1, b.h), 0, 1);
-    const boilC = getPressureAdjustedBoilingPointC(mol.type, pressureAtm);
-    const condenseC = getPressureAdjustedCondensePointC(mol.type, pressureAtm);
+    const boilC = config ? getPressureAdjustedBoilingPointC(mol.type, pressureAtm) : null;
+    const condenseC = config ? getPressureAdjustedCondensePointC(mol.type, pressureAtm) : null;
+    const meltC = Number(material.thermal?.meltingPointC);
     const vacuumBoost = pressureAtm < 1
       ? clamp(Math.pow(1 / Math.max(pressureAtm, 0.01), 0.42), 1, 5.5)
       : 1;
+    const farAboveMelt = Number.isFinite(meltC) && ambientTempC >= meltC + 18;
+    const farBelowMelt = Number.isFinite(meltC) && ambientTempC <= meltC - 18;
+    const farAboveBoil = Number.isFinite(boilC) && ambientTempC >= boilC + 24;
+    const farBelowCondense = Number.isFinite(condenseC) && ambientTempC <= condenseC - 24;
+    const standardTransitionLimit = 1;
+    const extremeTransitionLimit = 2;
 
-    if (mol.phase === 'liquid' && ambientTempC > boilC) {
-      const excess = ambientTempC - boilC;
-      const surfaceBias = clamp(1.25 - yNorm, 0.45, 1.35);
-      const chance = clamp((0.0005 + excess / 4200) * config.evapRate * surfaceBias * vacuumBoost * dt * 60, 0, 0.42);
-      if (Math.random() < chance) {
-        setMoleculePhaseMode(mol, 'gas');
+    if (mol.phase === 'solid' && Number.isFinite(meltC) && ambientTempC > meltC + 1.5 && getMaterialState(mol.type, 'liquid')) {
+      const excess = ambientTempC - meltC;
+      const chance = clamp((0.0004 + excess / 5200) * dt * 60, 0, 0.16);
+      const limit = farAboveMelt ? extremeTransitionLimit : standardTransitionLimit;
+      if ((farAboveMelt || Math.random() < chance) && tryReservePhaseShift(mol.type, 'solid', 'liquid', limit)) {
+        setMoleculePhaseMode(mol, 'liquid');
         for (const atom of mol.atoms) {
-          atom.vx += rand(-0.45, 0.45);
-          atom.vy -= rand(0.2, 0.9);
+          atom.vx *= 0.72;
+          atom.vy *= 0.72;
         }
-        applyThermalImpulse(config.coolDeltaC * clamp(1 + (vacuumBoost - 1) * 0.35, 1, 2.1), `${mol.display} evaporated`, {
+        addReactionLog('phase', `${mol.display} melted`, {
+          source: `${mol.type}_melt`,
           x: center.x,
-          y: center.y,
-          label: `${getSpeciesDisplayLabel(mol.type)} vapor`,
-          source: mol.type
+          y: center.y
         });
       }
       continue;
     }
 
-    if (mol.phase === 'gas' && ambientTempC < condenseC) {
+    if (mol.phase === 'liquid' && Number.isFinite(meltC) && ambientTempC < meltC - 1.5 && getMaterialState(mol.type, 'solid') && !mol.dissolved) {
+      const deficit = meltC - ambientTempC;
+      const chance = clamp((0.0005 + deficit / 4800) * dt * 60, 0, 0.22);
+      const limit = farBelowMelt ? extremeTransitionLimit : standardTransitionLimit;
+      if ((farBelowMelt || Math.random() < chance) && tryReservePhaseShift(mol.type, 'liquid', 'solid', limit)) {
+        setMoleculePhaseMode(mol, 'solid');
+        for (const atom of mol.atoms) {
+          atom.vx *= 0.30;
+          atom.vy = Math.max(atom.vy * 0.30, 0.55 + rand(0, 0.35));
+        }
+        addReactionLog('phase', `${mol.display} froze`, {
+          source: `${mol.type}_freeze`,
+          x: center.x,
+          y: center.y
+        });
+      }
+      continue;
+    }
+
+    if (config && mol.phase === 'liquid' && ambientTempC > boilC) {
+      const excess = ambientTempC - boilC;
+      const surfaceBias = clamp(1.25 - yNorm, 0.45, 1.35);
+      const chance = clamp((0.0005 + excess / 4200) * config.evapRate * surfaceBias * vacuumBoost * dt * 60, 0, 0.42);
+      const limit = farAboveBoil ? extremeTransitionLimit : standardTransitionLimit;
+      if ((farAboveBoil || Math.random() < chance) && tryReservePhaseShift(mol.type, 'liquid', 'gas', limit)) {
+        setMoleculePhaseMode(mol, 'gas');
+        for (const atom of mol.atoms) {
+          atom.vx += rand(-0.45, 0.45);
+          atom.vy -= rand(0.2, 0.9);
+        }
+        addThermalEvent(center.x, center.y, config.coolDeltaC * 0.25, `${getSpeciesDisplayLabel(mol.type)} vapor`);
+        addReactionLog('phase', `${mol.display} evaporated`, {
+          source: `${mol.type}_evaporate`,
+          x: center.x,
+          y: center.y
+        });
+      }
+      continue;
+    }
+
+    if (config && mol.phase === 'gas' && ambientTempC < condenseC) {
       const deficit = condenseC - ambientTempC;
       const sinkBias = clamp(yNorm + 0.15, 0.30, 1.20);
       const chance = clamp((0.0003 + deficit / 6000) * sinkBias * dt * 60, 0, 0.12);
-      if (Math.random() < chance) {
+      const limit = farBelowCondense ? extremeTransitionLimit : standardTransitionLimit;
+      if ((farBelowCondense || Math.random() < chance) && tryReservePhaseShift(mol.type, 'gas', 'liquid', limit)) {
         setMoleculePhaseMode(mol, 'liquid');
         for (const atom of mol.atoms) {
           atom.vx *= 0.72;
           atom.vy += rand(0.1, 0.4);
         }
-        applyThermalImpulse(Math.abs(config.coolDeltaC) * 0.55, `${mol.display} condensed`, {
+        addThermalEvent(center.x, center.y, Math.abs(config.coolDeltaC) * 0.18, `${getSpeciesDisplayLabel(mol.type)} condensate`);
+        addReactionLog('phase', `${mol.display} condensed`, {
+          source: `${mol.type}_condense`,
           x: center.x,
-          y: center.y,
-          label: `${getSpeciesDisplayLabel(mol.type)} condensate`,
-          source: mol.type
+          y: center.y
+        });
+      }
+      continue;
+    }
+
+    if (
+      mol.phase === 'gas' &&
+      !config &&
+      Number.isFinite(meltC) &&
+      ambientTempC < meltC - 8 &&
+      getMaterialState(mol.type, 'solid')
+    ) {
+      const deficit = meltC - ambientTempC;
+      const chance = clamp((0.00025 + deficit / 7200) * dt * 60, 0, 0.10);
+      const limit = farBelowMelt ? extremeTransitionLimit : standardTransitionLimit;
+      if (Math.random() < chance && tryReservePhaseShift(mol.type, 'gas', 'solid', limit)) {
+        setMoleculePhaseMode(mol, 'solid');
+        for (const atom of mol.atoms) {
+          atom.vx *= 0.18;
+          atom.vy = Math.max(atom.vy * 0.18, 0.95 + rand(0, 0.55));
+        }
+        addReactionLog('phase', `${mol.display} deposited into a solid phase`, {
+          source: `${mol.type}_deposit`,
+          x: center.x,
+          y: center.y
         });
       }
     }

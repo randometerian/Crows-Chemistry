@@ -600,25 +600,55 @@
       background:rgba(255,255,255,.02);
     }
 
+    .inspectContent{
+      min-height:0;
+    }
+
+    .inspectScroll{
+      min-height:0;
+      overflow:auto;
+      padding-right:4px;
+    }
+
+    .inspectCard{
+      gap:8px;
+      padding:10px;
+    }
+
     .inspectGrid{
       display:grid;
       gap:8px;
     }
 
+    .inspectMetaGrid{
+      grid-template-columns:repeat(3, minmax(0, 1fr));
+      gap:5px;
+    }
+
     .kv{
-      display:flex;
-      justify-content:space-between;
-      gap:12px;
-      font-size:12px;
+      display:grid;
+      gap:2px;
+      font-size:11px;
       color:var(--muted);
-      padding:8px 0;
-      border-bottom:1px solid rgba(255,255,255,.05);
+      padding:6px 7px;
+      border:1px solid rgba(255,255,255,.05);
+      border-radius:11px;
+      background:rgba(255,255,255,.02);
+      min-width:0;
+    }
+
+    .kv span{
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
     }
 
     .kv strong{
       color:var(--text);
-      font-size:12px;
+      font-size:10px;
       font-weight:650;
+      line-height:1.2;
+      word-break:break-word;
     }
 
     .hintBox{
@@ -629,6 +659,61 @@
       font-size:12px;
       color:var(--muted);
       line-height:1.45;
+    }
+
+    .inspectSummary{
+      padding:9px;
+      gap:6px;
+      display:grid;
+    }
+
+    .inspectSummaryTitle{
+      color:var(--text);
+      font-size:11px;
+      font-weight:700;
+    }
+
+    .inspectSummaryText{
+      font-size:10px;
+      line-height:1.3;
+    }
+
+    .inspectSummaryGrid{
+      display:grid;
+      grid-template-columns:repeat(3, minmax(0, 1fr));
+      gap:5px;
+    }
+
+    .inspectMini{
+      display:grid;
+      gap:3px;
+      padding:7px;
+      border-radius:11px;
+      background:rgba(255,255,255,.025);
+      border:1px solid rgba(255,255,255,.05);
+      min-width:0;
+    }
+
+    .inspectMini span{
+      font-size:9px;
+      color:var(--muted);
+      text-transform:uppercase;
+      letter-spacing:.05em;
+    }
+
+    .inspectMini strong{
+      font-size:10px;
+      color:var(--text);
+      line-height:1.2;
+      font-weight:600;
+      word-break:break-word;
+    }
+
+    @media (max-width: 360px){
+      .inspectMetaGrid,
+      .inspectSummaryGrid{
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+      }
     }
 
     .thermalBadge{

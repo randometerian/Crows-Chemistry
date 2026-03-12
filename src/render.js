@@ -20,10 +20,20 @@ function drawGrid(w, h) {
 
 function drawLiquidLayerBadge(layer, b) {
   const labelType = layer.layerKey === 'water' ? 'H2O' : layer.layerKey;
-  const title = layer.layerKey === 'water' && layer.dissolvedTypes.includes('CO2')
-    ? 'Carbonated water'
-    : getSpeciesDisplayName(labelType);
+  let title = getSpeciesDisplayName(labelType);
+  if (labelType === 'H2O') {
+    if (layer.phaseTag === 'solid') title = 'Ice';
+    else if (layer.phaseTag === 'condensed') title = 'Water / Ice';
+    else if (layer.layerKey === 'water' && layer.dissolvedTypes.includes('CO2')) title = 'Carbonated water';
+    else title = 'Water';
+  } else if (layer.phaseTag === 'solid') {
+    title = `Solid ${title}`;
+  }
   const detailParts = [];
+  if (layer.phaseTag === 'solid') detailParts.push('frozen phase');
+  else if (layer.phaseTag === 'condensed' && layer.solidCount > 0 && layer.liquidCount > 0) {
+    detailParts.push(`${layer.liquidCount} liquid • ${layer.solidCount} solid`);
+  }
   if (layer.chemistry) detailParts.push(layer.chemistry.chemistryLabel);
   if (layer.dissolvedTypes.length) {
     detailParts.push(layer.dissolvedTypes.slice(0, 2).map(getSpeciesDisplayLabel).join(', '));
@@ -92,9 +102,18 @@ function drawVessel() {
   }
 
   const liquidLayout = getLiquidLayerLayout();
+  if (liquidLayout.surfaceY != null && liquidLayout.condensedHeight > 0 && liquidLayout.layers.length === 0) {
+    ctx.fillStyle = 'rgba(214,225,240,0.05)';
+    ctx.beginPath();
+    ctx.roundRect(b.x + 3, liquidLayout.surfaceY, b.w - 6, liquidLayout.condensedHeight, 12);
+    ctx.fill();
+  }
   if (liquidLayout.layers.length > 0) {
     for (const layer of liquidLayout.layers) {
-      ctx.fillStyle = colorWithAlpha(layer.color, 0.10 + layer.count * 0.02);
+      const alpha = layer.phaseTag === 'solid'
+        ? (0.16 + layer.count * 0.018)
+        : (0.10 + layer.count * 0.02);
+      ctx.fillStyle = colorWithAlpha(layer.color, alpha);
       ctx.beginPath();
       ctx.roundRect(b.x + 3, layer.y, b.w - 6, layer.h, 12);
       ctx.fill();
@@ -104,6 +123,9 @@ function drawVessel() {
       }
     }
 
+  }
+
+  if (liquidLayout.surfaceY != null && liquidLayout.condensedHeight > 0) {
     ctx.strokeStyle = 'rgba(255,255,255,.10)';
     ctx.lineWidth = 1;
     ctx.setLineDash([8, 8]);
@@ -164,15 +186,19 @@ function drawBond(a, b, order) {
   ctx.restore();
 }
 
-function drawAtom(atom, loneDots, t, selected = false) {
+function drawAtom(atom, loneDots, t, selected = false, phase = 'particle') {
   const style = elementStyles[atom.el];
   const excitement = clamp(atom.excited || 0, 0, 1.4);
   const shellR = style.r + 9 + excitement * 2.5;
+  const isSolid = phase === 'solid';
+  const atomFill = isSolid ? '#e8f7ff' : style.color;
+  const shadowColor = isSolid ? 'rgba(218,242,255,0.48)' : colorWithAlpha(style.color, selected ? 0.55 : 0.35);
 
   ctx.save();
 
   if (excitement > 0.02) {
-    ctx.strokeStyle = `rgba(255,236,165,${0.20 + excitement * 0.22})`;
+    const excitedColor = atom.excitedColor || '#ffeca5';
+    ctx.strokeStyle = colorWithAlpha(excitedColor, 0.20 + excitement * 0.22);
     ctx.lineWidth = 1.2;
     ctx.beginPath();
     ctx.arc(atom.x, atom.y, style.r + 4 + excitement * 2, 0, TAU);
@@ -194,18 +220,28 @@ function drawAtom(atom, loneDots, t, selected = false) {
     }
   }
 
-  ctx.shadowColor = colorWithAlpha(style.color, selected ? 0.55 : 0.35);
-  ctx.shadowBlur = selected ? 16 : 10;
+  ctx.shadowColor = shadowColor;
+  ctx.shadowBlur = isSolid ? (selected ? 18 : 12) : (selected ? 16 : 10);
 
-  ctx.fillStyle = style.color;
+  ctx.fillStyle = atomFill;
   ctx.beginPath();
   ctx.arc(atom.x, atom.y, style.r, 0, TAU);
   ctx.fill();
 
   ctx.shadowBlur = 0;
-  ctx.strokeStyle = selected ? 'rgba(255,255,255,.42)' : 'rgba(255,255,255,.12)';
-  ctx.lineWidth = selected ? 2 : 1;
+  ctx.strokeStyle = isSolid
+    ? (selected ? 'rgba(255,255,255,.82)' : 'rgba(220,245,255,.52)')
+    : (selected ? 'rgba(255,255,255,.42)' : 'rgba(255,255,255,.12)');
+  ctx.lineWidth = isSolid ? (selected ? 2.3 : 1.5) : (selected ? 2 : 1);
   ctx.stroke();
+
+  if (isSolid) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.34)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(atom.x, atom.y, style.r + 3.2, 0, TAU);
+    ctx.stroke();
+  }
 
   ctx.fillStyle = 'rgba(10,14,20,.9)';
   ctx.font = `700 ${Math.max(11, style.r * 0.75)}px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif`;
@@ -267,7 +303,7 @@ function drawMolecule(mol, t) {
 
   const selected = world.selectedMolId === mol.id;
   for (let i = 0; i < mol.atoms.length; i++) {
-    drawAtom(mol.atoms[i], getLoneElectronCount(mol, i), t, selected);
+    drawAtom(mol.atoms[i], getLoneElectronCount(mol, i), t, selected, mol.phase);
   }
 }
 

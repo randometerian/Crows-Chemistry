@@ -119,12 +119,17 @@ function applyLightExcitation(dt) {
     }
 
     if (bestHit <= 0) continue;
+    const response = getMaterialLightResponse(mol.type, band.id);
     const bandBoost = band.photochemical ? 1.15 : (band.id === 'visible' ? 0.55 : 0.25);
-    const cl2Boost = mol.type === 'Cl2' && band.photochemical ? 1.35 : 1;
-    mol.photoExcitation = clamp((mol.photoExcitation || 0) + bestHit * dt * 5.2 * bandBoost * cl2Boost, 0, 1.8);
+    const excitationGain = bestHit * dt * 5.2 * bandBoost * response.absorption * response.excitationMultiplier;
+    mol.photoExcitation = clamp((mol.photoExcitation || 0) + excitationGain, 0, 1.8);
     mol.lastLightBand = band.id;
     for (const atom of mol.atoms) {
-      atom.excited = clamp((atom.excited || 0) + bestHit * dt * (band.photochemical ? 5.0 : 3.1) + rand(0.01, 0.05), 0, 1.4);
+      atom.excited = clamp((atom.excited || 0) + bestHit * dt * (band.photochemical ? 5.0 : 3.1) * response.absorption * response.excitationMultiplier + rand(0.01, 0.05), 0, 1.4);
+      atom.excitedColor = response.emissionColor;
+    }
+    if (response.lightToHeatFactor > 0) {
+      world.heatPulseC = clamp(world.heatPulseC + excitationGain * response.lightToHeatFactor * 0.45, -900, 2200);
     }
   }
 }
@@ -155,7 +160,7 @@ function applyStirring(dt) {
     const radialX = -dx / radius;
     const radialY = -dy / radius;
     const edgeBoost = clamp(radius / Math.max(1, b.w * 0.45), 0.45, 1.45);
-    const phaseBoost = mol.phase === 'liquid' ? 1.9 : (mol.phase === 'particle' ? 1.35 : 0.9);
+    const phaseBoost = mol.phase === 'liquid' ? 1.9 : ((mol.phase === 'particle' || mol.phase === 'solid') ? 1.35 : 0.9);
     const centerLift = clamp(1.25 - radius / Math.max(1, b.w * 0.42), 0.3, 1.15);
 
     for (const atom of mol.atoms) {
@@ -177,6 +182,7 @@ function updatePhysics(dt) {
   const b = world.bounds;
   const ambientTempC = getEffectiveTemperatureC();
   const pressureAtm = getEffectivePressureAtm();
+  const phasePressureAtm = world.pressureAtm;
   const ambientHeat = tempToHeatLevel(ambientTempC);
   const thermalScale = Math.sqrt(cToK(ambientTempC) / 298.15);
   const liquidLayout = getLiquidLayerLayout();
@@ -236,18 +242,21 @@ function updatePhysics(dt) {
       }
     }
 
-    if (mol.phase === 'particle') {
+    if (mol.phase === 'particle' || mol.phase === 'solid') {
       const settle = clamp((mol.density || 1) * 0.42, 0.18, 1.2);
       for (const a of mol.atoms) {
-        a.fy += settle;
-        a.vx *= 0.985;
-        a.vy *= 0.992;
+        a.fy += settle * (mol.phase === 'solid' ? 1.15 : 1);
+        a.vx *= mol.phase === 'solid' ? 0.972 : 0.985;
+        a.vy *= mol.phase === 'solid' ? 0.982 : 0.992;
       }
     }
 
     if (mol.phase === 'liquid') {
       const yNorm = clamp((center.y - b.y) / b.h, 0, 1);
-      const targetYNorm = clamp(0.18 + (mol.density / 1.45) * 0.68, 0.16, 0.93);
+      const layer = liquidLayout.layers.find(entry => entry.layerKey === getLiquidLayerKey(mol));
+      const targetYNorm = layer
+        ? clamp((layer.centerY - b.y) / b.h, 0.16, 0.93)
+        : clamp(0.18 + (mol.density / 1.45) * 0.68, 0.16, 0.93);
       const densityBias = (targetYNorm - yNorm) * 12;
 
       const mixFactor = (mol.miscibleGroup === 'water') ? 0.55 :
@@ -271,7 +280,7 @@ function updatePhysics(dt) {
       a.fx += boundaryPullX;
     }
 
-    const baseDamp = mol.phase === 'gas' || mol.phase === 'particle'
+    const baseDamp = mol.phase === 'gas' || mol.phase === 'particle' || mol.phase === 'solid'
       ? (0.996 - ambientHeat * 0.005 - Math.max(0, pressureAtm - 1) * 0.0016)
       : (0.993 - ambientHeat * 0.0025);
 
@@ -282,13 +291,14 @@ function updatePhysics(dt) {
       a.vx += (a.fx / a.m) * dt * 60;
       a.vy += (a.fy / a.m) * dt * 60;
 
-      const vmax = (mol.phase === 'gas' || mol.phase === 'particle')
+      const vmax = (mol.phase === 'gas' || mol.phase === 'particle' || mol.phase === 'solid')
         ? (1.9 + ambientHeat * 3.8) * thermalScale * clamp(1.1 - Math.max(0, pressureAtm - 1) * 0.08, 0.65, 1.18)
         : (1.1 + ambientHeat * 1.0) * Math.min(thermalScale, 1.7);
+      const cappedVmax = mol.phase === 'solid' ? Math.min(vmax, 0.75 + ambientHeat * 0.35) : vmax;
 
       const v = Math.hypot(a.vx, a.vy);
-      if (v > vmax) {
-        const s = vmax / v;
+      if (v > cappedVmax) {
+        const s = cappedVmax / v;
         a.vx *= s;
         a.vy *= s;
       }
@@ -305,7 +315,7 @@ function updatePhysics(dt) {
   handleCarbonation(dt, ambientTempC, pressureAtm);
   handleAqueousIonChemistry(dt, ambientTempC, pressureAtm);
   handleLiquidMixing(dt);
-  handlePhaseTransitions(dt, ambientTempC, pressureAtm);
+  handlePhaseTransitions(dt, ambientTempC, phasePressureAtm);
   runScriptedReactions(dt, ambientTempC, pressureAtm);
   world.molecules = world.molecules.filter(m => m.alive);
 
