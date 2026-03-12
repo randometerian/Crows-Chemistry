@@ -1866,6 +1866,20 @@ function setMoleculePhaseMode(mol, nextPhase) {
   mol.density = state.density ?? mol.density;
   mol.miscibleGroup = state.miscibleGroup || mol.miscibleGroup;
   mol.color = state.color || mol.color;
+  if (nextPhase === 'solid') {
+    mol.layerSnap = {
+      kind: 'solid-layer',
+      status: 'pending',
+      triggerAt: world.time + 0.72,
+      duration: 0.28,
+      fromX: null,
+      fromY: null,
+      toX: null,
+      toY: null
+    };
+  } else {
+    mol.layerSnap = null;
+  }
 }
 
 function setMoleculeDissolvedState(mol, dissolved) {
@@ -1873,6 +1887,7 @@ function setMoleculeDissolvedState(mol, dissolved) {
   if (!config) return;
 
   mol.dissolved = dissolved;
+  mol.layerSnap = null;
   if (dissolved) {
     mol.phase = 'liquid';
     mol.density = config.dissolvedDensity;
@@ -2034,6 +2049,153 @@ function moleculeCenter(mol) {
   return { x: mx / m, y: my / m };
 }
 
+function shiftMoleculeCenterTo(mol, x, y, velocityScale = 0.32) {
+  const center = moleculeCenter(mol);
+  const dx = x - center.x;
+  const dy = y - center.y;
+  for (const atom of mol.atoms) {
+    atom.x += dx;
+    atom.y += dy;
+    atom.vx *= velocityScale;
+    atom.vy *= velocityScale;
+  }
+}
+
+function getSolidLayerAnchor(mol, layer, bounds = world.bounds) {
+  if (!layer || !bounds) return null;
+
+  const solidMembers = (layer.solidMembers || [])
+    .filter(entry => entry.alive && entry.phase === 'solid')
+    .sort((a, b) => a.id - b.id);
+  if (!solidMembers.length) return null;
+
+  const index = solidMembers.findIndex(entry => entry.id === mol.id);
+  if (index === -1) return null;
+
+  const radius = moleculeRadius(mol);
+  const slotRadius = Math.max(radius, layer.maxSolidRadius || radius);
+  const minGapX = Math.max(28, slotRadius * 2.5);
+  const minGapY = Math.max(22, slotRadius * 2.0);
+  const xPadding = slotRadius + 16;
+  const yPadding = Math.max(8, Math.min(layer.h * 0.16, slotRadius * 0.55));
+  const minX = bounds.x + xPadding;
+  const maxX = bounds.x + bounds.w - xPadding;
+  const minY = layer.y + yPadding;
+  const maxY = layer.y + layer.h - yPadding;
+  const spanX = Math.max(0, maxX - minX);
+  const spanY = Math.max(0, maxY - minY);
+  const count = solidMembers.length;
+
+  const maxRows = Math.max(1, Math.floor(spanY / minGapY) + 1);
+  const maxCols = Math.max(1, Math.floor(spanX / minGapX) + 1);
+  let rows = Math.min(count, maxRows);
+  let cols = Math.max(1, Math.ceil(count / rows));
+  if (cols > maxCols) {
+    cols = maxCols;
+    rows = Math.max(1, Math.ceil(count / cols));
+  }
+
+  const row = Math.floor(index / cols);
+  const col = index % cols;
+  const rowCount = Math.min(cols, count - row * cols);
+  const xProgress = rowCount <= 1 ? 0.5 : col / (rowCount - 1);
+  const yProgress = rows <= 1 ? 0.5 : row / (rows - 1);
+  const jitterX = (Math.sin(mol.id * 12.9898 + row * 5.19) * 0.5 + 0.5) - 0.5;
+  const jitterY = (Math.sin(mol.id * 7.153 + col * 3.71) * 0.5 + 0.5) - 0.5;
+  const xNudge = jitterX * Math.min(12, minGapX * 0.18);
+  const yNudge = jitterY * Math.min(8, minGapY * 0.16);
+
+  return {
+    x: spanX > 0 ? clamp(minX + spanX * (0.08 + xProgress * 0.84) + xNudge, minX, maxX) : minX,
+    y: spanY > 0 ? clamp(minY + spanY * (0.16 + yProgress * 0.68) + yNudge, minY, maxY) : minY
+  };
+}
+
+function getSolidLayerSnapTarget(mol, layer, bounds = world.bounds) {
+  const anchor = getSolidLayerAnchor(mol, layer, bounds);
+  if (anchor) return anchor;
+  if (!layer || !bounds) return null;
+  return { x: bounds.x + bounds.w * 0.5, y: layer.centerY };
+}
+
+function solidLayerSnapOffset(mol, layer) {
+  if (!layer) return 0;
+  const center = moleculeCenter(mol);
+  const radius = moleculeRadius(mol);
+  const margin = Math.max(18, Math.min(38, radius * 0.95));
+  if (center.y < layer.y - margin) return center.y - (layer.y - margin);
+  if (center.y > layer.y + layer.h + margin) return center.y - (layer.y + layer.h + margin);
+  return 0;
+}
+
+function updateSolidLayerSnapAnimations(dt, liquidLayout) {
+  if (!world.bounds || !liquidLayout?.layers?.length) return;
+
+  for (const mol of world.molecules) {
+    const snap = mol.layerSnap;
+    if (!snap) continue;
+
+    if (!mol.alive || mol.phase !== 'solid') {
+      mol.layerSnap = null;
+      continue;
+    }
+
+    if (world.dragging.mol?.id === mol.id) continue;
+
+    const layer = liquidLayout.layers.find(entry => entry.layerKey === getLiquidLayerKey(mol));
+    if (!layer) continue;
+
+    const offset = solidLayerSnapOffset(mol, layer);
+    if (snap.status === 'pending') {
+      if (Math.abs(offset) < 1) {
+        mol.layerSnap = null;
+        continue;
+      }
+      if (world.time < snap.triggerAt) continue;
+      const target = getSolidLayerSnapTarget(mol, layer);
+      if (!target) continue;
+      mol.layerSnap = {
+        ...snap,
+        status: 'active',
+        startedAt: world.time,
+        fromX: moleculeCenter(mol).x,
+        fromY: moleculeCenter(mol).y,
+        toX: target.x,
+        toY: target.y
+      };
+      continue;
+    }
+
+    if (snap.status !== 'active') continue;
+
+    const target = getSolidLayerSnapTarget(mol, layer);
+    if (!target) {
+      mol.layerSnap = null;
+      continue;
+    }
+
+    snap.toX = target.x;
+    snap.toY = target.y;
+
+    const progress = clamp((world.time - snap.startedAt) / Math.max(0.001, snap.duration || 0.28), 0, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const nextX = snap.fromX + (snap.toX - snap.fromX) * eased;
+    const nextY = snap.fromY + (snap.toY - snap.fromY) * eased;
+    shiftMoleculeCenterTo(mol, nextX, nextY, 0.14);
+
+    for (const atom of mol.atoms) {
+      atom.vx *= 0.35;
+      atom.vy *= 0.35;
+      atom.vy += clamp(-offset * 0.0015, -0.12, 0.12) * dt * 60;
+    }
+
+    if (progress >= 1) {
+      shiftMoleculeCenterTo(mol, snap.toX, snap.toY, 0.08);
+      mol.layerSnap = null;
+    }
+  }
+}
+
 function getLiquidLayerKey(mol) {
   if (mol.type === 'H2O' && mol.phase === 'liquid') return 'water';
   if (mol.dissolved) {
@@ -2077,6 +2239,10 @@ function getLiquidLayerLayout() {
       const allSolid = arr.every(mol => mol.phase === 'solid');
       const allLiquid = arr.every(mol => mol.phase === 'liquid');
       const averageDensity = arr.reduce((sum, mol) => sum + (mol.density || 1), 0) / Math.max(1, arr.length);
+      const solidMembers = arr
+        .filter(mol => mol.phase === 'solid')
+        .sort((a, b2) => a.id - b2.id);
+      const maxSolidRadius = solidMembers.reduce((max, mol) => Math.max(max, moleculeRadius(mol)), 0);
       const boilType = layerKey === 'water' ? 'H2O' : sample.type;
       const boilPointC = liquidMembers.length && EVAPORATION_CONFIG[boilType]
         ? getPressureAdjustedBoilingPointC(boilType, world.pressureAtm)
@@ -2092,6 +2258,8 @@ function getLiquidLayerLayout() {
         density: averageDensity || sample?.density || spec?.density || 1.0,
         color: spec?.color || sample?.color || '#9bbcff',
         dissolvedTypes,
+        solidMembers,
+        maxSolidRadius,
         phaseTag: allSolid ? 'solid' : (allLiquid ? (layerKey === 'water' ? 'aqueous' : 'liquid') : 'condensed'),
         boilingIntensity,
         chemistry: liquidMembers.length
@@ -2147,13 +2315,16 @@ function confineMoleculeToPhaseZone(mol, b, liquidLayout, dt) {
 
   let minAllowedY = top;
   let maxAllowedY = bottom;
+  let targetX = null;
   let targetY = null;
   let softRange = null;
 
   if (mol.phase === 'liquid' || mol.phase === 'solid') {
     const layer = liquidLayout.layers.find(entry => entry.layerKey === getLiquidLayerKey(mol));
     if (layer) {
-      targetY = layer.centerY;
+      const anchor = mol.phase === 'solid' ? getSolidLayerAnchor(mol, layer, b) : null;
+      targetX = anchor?.x ?? null;
+      targetY = anchor?.y ?? layer.centerY;
       softRange = {
         min: layer.y - Math.max(mol.phase === 'solid' ? 10 : 18, layer.h * (mol.phase === 'solid' ? 0.22 : 0.35)),
         max: layer.y + layer.h + Math.max(mol.phase === 'solid' ? 10 : 18, layer.h * (mol.phase === 'solid' ? 0.22 : 0.35))
@@ -2202,6 +2373,13 @@ function confineMoleculeToPhaseZone(mol, b, liquidLayout, dt) {
     const pull = (targetY - center.y) * pullScale * dt * 60;
     for (const atom of mol.atoms) {
       atom.vy += pull;
+    }
+  }
+
+  if (targetX != null && Number.isFinite(targetX)) {
+    const pullX = (targetX - center.x) * 0.0022 * dt * 60;
+    for (const atom of mol.atoms) {
+      atom.vx += pullX;
     }
   }
 

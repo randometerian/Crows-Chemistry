@@ -245,17 +245,22 @@ function updatePhysics(dt) {
     const condensedLayer = (mol.phase === 'liquid' || mol.phase === 'solid')
       ? liquidLayout.layers.find(entry => entry.layerKey === getLiquidLayerKey(mol))
       : null;
+    const solidAnchor = (mol.phase === 'solid' && condensedLayer)
+      ? getSolidLayerAnchor(mol, condensedLayer, b)
+      : null;
 
     if (mol.phase === 'particle' || mol.phase === 'solid') {
       const settleBase = clamp((mol.density || 1) * 0.42, 0.18, 1.2);
       const settle = mol.phase === 'solid' && condensedLayer ? settleBase * 0.38 : settleBase;
       const yNorm = clamp((center.y - b.y) / b.h, 0, 1);
       const targetYNorm = mol.phase === 'solid' && condensedLayer
-        ? clamp((condensedLayer.centerY - b.y) / b.h, 0.16, 0.95)
+        ? clamp(((solidAnchor?.y ?? condensedLayer.centerY) - b.y) / b.h, 0.16, 0.95)
         : null;
       const layerBias = targetYNorm == null ? 0 : (targetYNorm - yNorm) * 10.5;
+      const layerBiasX = solidAnchor ? (solidAnchor.x - center.x) * 0.0105 : 0;
       for (const a of mol.atoms) {
         a.fy += settle * (mol.phase === 'solid' ? 1.15 : 1) + layerBias;
+        if (layerBiasX) a.fx += layerBiasX;
         a.vx *= mol.phase === 'solid' ? 0.972 : 0.985;
         a.vy *= mol.phase === 'solid' ? 0.982 : 0.992;
       }
@@ -284,7 +289,9 @@ function updatePhysics(dt) {
       }
     }
 
-    const boundaryPullX = (b.x + b.w * 0.5 - center.x) * 0.0008;
+    const boundaryTargetX = solidAnchor?.x ?? (b.x + b.w * 0.5);
+    const boundaryPullStrength = solidAnchor ? 0.0018 : 0.0008;
+    const boundaryPullX = (boundaryTargetX - center.x) * boundaryPullStrength;
     for (const a of mol.atoms) {
       a.fx += boundaryPullX;
     }
@@ -319,6 +326,8 @@ function updatePhysics(dt) {
     keepMoleculeInsideVessel(mol, b);
     confineMoleculeToPhaseZone(mol, b, liquidLayout, dt);
   }
+
+  updateSolidLayerSnapAnimations(dt, liquidLayout);
 
   handleDissolution(dt);
   handleCarbonation(dt, ambientTempC, pressureAtm);

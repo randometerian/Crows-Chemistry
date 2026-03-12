@@ -365,7 +365,7 @@ function drawLightOverlay() {
   ctx.restore();
 }
 
-function drawMolecule(mol, t) {
+function renderMoleculeBody(mol, t) {
   for (const bond of mol.bonds) {
     const a = mol.atoms[bond.a];
     const b = mol.atoms[bond.b];
@@ -376,6 +376,60 @@ function drawMolecule(mol, t) {
   for (let i = 0; i < mol.atoms.length; i++) {
     drawAtom(mol.atoms[i], getLoneElectronCount(mol, i), t, selected, mol.phase);
   }
+}
+
+function drawSolidLayerSnapEffect(mol) {
+  const snap = mol.layerSnap;
+  if (!snap || snap.status !== 'active') return null;
+
+  const progress = clamp((world.time - snap.startedAt) / Math.max(0.001, snap.duration || 0.28), 0, 1);
+  const center = moleculeCenter(mol);
+  const radius = moleculeRadius(mol);
+  const targetX = snap.toX ?? center.x;
+  const targetY = snap.toY ?? center.y;
+  const travelAlpha = 1 - progress;
+
+  ctx.save();
+  ctx.strokeStyle = colorWithAlpha(mol.color || '#dff4ff', 0.12 + travelAlpha * 0.22);
+  ctx.lineWidth = 1.2 + travelAlpha * 1.4;
+  ctx.setLineDash([8, 7]);
+  ctx.lineDashOffset = -(world.time * 42);
+  ctx.beginPath();
+  ctx.moveTo(snap.fromX ?? center.x, snap.fromY ?? center.y);
+  ctx.lineTo(targetX, targetY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = colorWithAlpha(mol.color || '#dff4ff', 0.06 + travelAlpha * 0.14);
+  ctx.beginPath();
+  ctx.arc(targetX, targetY, radius + 10 + travelAlpha * 16, 0, TAU);
+  ctx.fill();
+
+  ctx.strokeStyle = `rgba(243,251,255,${0.18 + travelAlpha * 0.28})`;
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.arc(targetX, targetY, radius + 4 + Math.sin(progress * Math.PI) * 8, 0, TAU);
+  ctx.stroke();
+  ctx.restore();
+
+  return { progress, center };
+}
+
+function drawMolecule(mol, t) {
+  const snapState = drawSolidLayerSnapEffect(mol);
+  if (!snapState) {
+    renderMoleculeBody(mol, t);
+    return;
+  }
+
+  const popScale = 1 + Math.sin(snapState.progress * Math.PI) * 0.12 - (1 - snapState.progress) * 0.06;
+  ctx.save();
+  ctx.globalAlpha = 0.90 + Math.sin(snapState.progress * Math.PI) * 0.10;
+  ctx.translate(snapState.center.x, snapState.center.y);
+  ctx.scale(popScale, popScale);
+  ctx.translate(-snapState.center.x, -snapState.center.y);
+  renderMoleculeBody(mol, t);
+  ctx.restore();
 }
 
 function drawHeatOverlay() {
