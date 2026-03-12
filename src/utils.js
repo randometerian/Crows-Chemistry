@@ -71,11 +71,25 @@ const LIGHT_BANDS = [
   { id: 'radio', label: 'Radio', color: '#7db5ff', energy: 0, photochemical: false },
   { id: 'microwave', label: 'Microwave', color: '#87d3ff', energy: 1, photochemical: false },
   { id: 'infrared', label: 'Infrared', color: '#ffb37d', energy: 2, photochemical: false },
-  { id: 'visible', label: 'Visible', color: '#fff0b0', energy: 3, photochemical: false },
+  { id: 'visible-red', label: 'Red', color: '#ff8f7e', energy: 3, photochemical: false, family: 'visible' },
+  { id: 'visible-green', label: 'Green', color: '#a5f0a1', energy: 3, photochemical: false, family: 'visible' },
+  { id: 'visible-blue', label: 'Blue', color: '#8dbfff', energy: 3, photochemical: false, family: 'visible' },
   { id: 'uv', label: 'UV', color: '#cda7ff', energy: 4, photochemical: true },
   { id: 'xray', label: 'X-Ray', color: '#f2c5ff', energy: 5, photochemical: true },
   { id: 'gamma', label: 'Gamma', color: '#ffd4f0', energy: 6, photochemical: true }
 ];
+const DEFAULT_LIGHT_BAND_ID = 'uv';
+const VISIBLE_LIGHT_BAND_IDS = LIGHT_BANDS
+  .filter(entry => entry.family === 'visible')
+  .map(entry => entry.id);
+const SYNTHETIC_VISIBLE_BAND = {
+  id: 'visible',
+  label: 'Visible',
+  color: '#fff0b0',
+  energy: 3,
+  photochemical: false,
+  family: 'visible'
+};
 
 function resize() {
   canvas.width = Math.floor(window.innerWidth * DPR);
@@ -239,7 +253,32 @@ function pointInRect(point, rect) {
   return !!rect && point.x >= rect.x && point.x <= rect.x + rect.w && point.y >= rect.y && point.y <= rect.y + rect.h;
 }
 function getLightBand(value = world.light.band) {
-  return LIGHT_BANDS.find(entry => entry.id === value) || LIGHT_BANDS[4];
+  if (value === 'visible') return SYNTHETIC_VISIBLE_BAND;
+  return LIGHT_BANDS.find(entry => entry.id === value)
+    || LIGHT_BANDS.find(entry => entry.id === DEFAULT_LIGHT_BAND_ID)
+    || LIGHT_BANDS[0];
+}
+function isVisibleLightBand(bandId) {
+  return bandId === 'visible' || VISIBLE_LIGHT_BAND_IDS.includes(bandId);
+}
+function lightBandMatches(entryBandId, currentBandId) {
+  if (!entryBandId || !currentBandId) return false;
+  if (entryBandId === currentBandId) return true;
+  if (isVisibleLightBand(entryBandId) && isVisibleLightBand(currentBandId)) {
+    return entryBandId === 'visible' || currentBandId === 'visible';
+  }
+  return false;
+}
+function materialRespondsToLightBand(bands, currentBandId) {
+  return Array.isArray(bands) && bands.some(entryBandId => lightBandMatches(entryBandId, currentBandId));
+}
+function lightBandSatisfiesRequirement(currentBandId, requiredBandId) {
+  if (!requiredBandId) return true;
+  const currentBand = getLightBand(currentBandId);
+  const requiredBand = getLightBand(requiredBandId);
+  if (currentBand.energy > requiredBand.energy) return true;
+  if (currentBand.energy < requiredBand.energy) return false;
+  return lightBandMatches(currentBand.id, requiredBand.id);
 }
 function toSubscript(num) {
   return String(num).split('').map(d => SUBSCRIPT[d] || d).join('');
@@ -407,6 +446,16 @@ function getSpeciesDisplayLabel(type) {
   return SPECIES[type]?.label || getSpeciesCatalogItem(type)?.label || type;
 }
 
+function formatLightBandList(bands) {
+  if (!Array.isArray(bands) || bands.length === 0) return 'none';
+  const labels = [];
+  for (const bandId of bands) {
+    const label = getLightBand(bandId).label;
+    if (label && !labels.includes(label)) labels.push(label);
+  }
+  return labels.length ? labels.join(', ') : 'none';
+}
+
 function uniqueStrings(values) {
   return [...new Set(values.filter(Boolean))];
 }
@@ -478,7 +527,10 @@ function speciesBehaviorSummary(type) {
     parts.push(`In water it acts as a weak acid.`);
   }
   if (material.optical?.absorptionBands?.length) {
-    parts.push(`Responds most to ${material.optical.absorptionBands.join(', ')} light.`);
+    parts.push(`Responds most to ${formatLightBandList(material.optical.absorptionBands)} light.`);
+  }
+  if ((material.optical?.emissionStrength || 0) > 0 && material.optical?.luminescenceBands?.length) {
+    parts.push(`Can re-emit ${material.optical.emissionColor} light after ${formatLightBandList(material.optical.luminescenceBands)} exposure.`);
   }
   if (type === 'CO2') parts.push('Under pressure it can dissolve into water and make carbonated water.');
   if (!parts.length) return 'No scripted reactions currently reference this species.';

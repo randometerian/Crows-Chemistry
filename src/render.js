@@ -365,6 +365,70 @@ function drawLightOverlay() {
   ctx.restore();
 }
 
+function drawMoleculeEmission(mol, t) {
+  const glow = clamp(mol.emissionGlow || 0, 0, 1.8);
+  if (glow < 0.03) return;
+
+  const center = moleculeCenter(mol);
+  const radius = moleculeRadius(mol);
+  const color = mol.emissionColor || mol.color || '#dff4ff';
+  const style = mol.emissionStyle || 'halo';
+  const timeSeconds = t * 0.001;
+  const haloRadius = radius + 10 + glow * 16;
+
+  ctx.save();
+  const halo = ctx.createRadialGradient(center.x, center.y, Math.max(2, radius * 0.28), center.x, center.y, haloRadius);
+  halo.addColorStop(0, colorWithAlpha(color, 0.08 + glow * 0.18));
+  halo.addColorStop(0.45, colorWithAlpha(color, 0.04 + glow * 0.09));
+  halo.addColorStop(1, colorWithAlpha(color, 0));
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, haloRadius, 0, TAU);
+  ctx.fill();
+
+  ctx.strokeStyle = colorWithAlpha(color, 0.10 + glow * 0.16);
+  ctx.lineWidth = 1 + glow * 0.8;
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, radius + 4 + glow * 3.5 + Math.sin(world.time * 7 + mol.id * 0.3) * 1.2, 0, TAU);
+  ctx.stroke();
+
+  if (style === 'line') {
+    const lineCount = 2 + Math.min(4, Math.round(glow * 4));
+    ctx.lineCap = 'round';
+    for (let i = 0; i < lineCount; i++) {
+      const cycle = ((timeSeconds * (1.8 + glow * 0.35)) + i * 0.21 + mol.id * 0.017) % 1;
+      const angle = mol.id * 0.41 + i * (TAU / lineCount) + cycle * 0.9;
+      const startR = radius * 0.36 + cycle * 3;
+      const length = 7 + glow * 13 + (1 - cycle) * 6;
+      const startX = center.x + Math.cos(angle) * startR;
+      const startY = center.y + Math.sin(angle) * startR;
+      const endX = center.x + Math.cos(angle) * (startR + length);
+      const endY = center.y + Math.sin(angle) * (startR + length);
+      ctx.strokeStyle = colorWithAlpha(color, (1 - cycle) * (0.16 + glow * 0.30));
+      ctx.lineWidth = 0.9 + glow * 1.1;
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+    }
+  } else {
+    const moteCount = 3 + Math.min(5, Math.round(glow * 5));
+    for (let i = 0; i < moteCount; i++) {
+      const cycle = ((timeSeconds * (0.82 + glow * 0.24)) + i * 0.18 + mol.id * 0.031) % 1;
+      const angle = mol.id * 0.53 + i * (TAU / moteCount) + cycle * 1.6;
+      const dist = radius * 0.22 + cycle * (radius + 10 + glow * 18);
+      const px = center.x + Math.cos(angle) * dist;
+      const py = center.y + Math.sin(angle) * dist;
+      const moteR = 1 + glow * 1.8 * (1 - cycle);
+      ctx.fillStyle = colorWithAlpha(color, (1 - cycle) * (0.14 + glow * 0.26));
+      ctx.beginPath();
+      ctx.arc(px, py, moteR, 0, TAU);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
 function renderMoleculeBody(mol, t) {
   for (const bond of mol.bonds) {
     const a = mol.atoms[bond.a];
@@ -428,6 +492,7 @@ function getDraggedMoleculeVisual(mol) {
 }
 
 function drawMolecule(mol, t) {
+  drawMoleculeEmission(mol, t);
   const snapState = drawSolidLayerSnapEffect(mol);
   const dragState = getDraggedMoleculeVisual(mol);
   if (!snapState && !dragState) {

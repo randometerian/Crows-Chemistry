@@ -107,14 +107,7 @@ function setActiveTool(tool) {
     armDraggedMoleculeRecovery(world.dragging.mol);
   }
   world.ui.activeTool = tool;
-  world.dragging.mol = null;
-  world.dragging.atomId = null;
-  world.dragging.pointerId = null;
-  world.dragging.targetX = 0;
-  world.dragging.targetY = 0;
-  world.dragging.startedAt = 0;
-  world.dragging.momentumX = 0;
-  world.dragging.momentumY = 0;
+  clearDraggingState();
   if (tool !== 'light') stopLightBeam();
   updateThermalLabels();
 }
@@ -147,8 +140,14 @@ function armDraggedMoleculeRecovery(mol) {
 }
 
 function clearDraggingState() {
+  const pointerId = world.dragging.pointerId;
+  if (pointerId != null && canvas.hasPointerCapture?.(pointerId)) {
+    canvas.releasePointerCapture(pointerId);
+  }
   world.dragging.mol = null;
   world.dragging.atomId = null;
+  world.dragging.offsetX = 0;
+  world.dragging.offsetY = 0;
   world.dragging.pointerId = null;
   world.dragging.targetX = 0;
   world.dragging.targetY = 0;
@@ -266,7 +265,6 @@ window.addEventListener('pointerup', (e) => {
     stopLightBeam();
   }
   if (world.dragging.mol && e.pointerId === world.dragging.pointerId) {
-    if (canvas.hasPointerCapture?.(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
     armDraggedMoleculeRecovery(world.dragging.mol);
     clearDraggingState();
   }
@@ -277,7 +275,6 @@ window.addEventListener('pointercancel', (e) => {
     stopLightBeam();
   }
   if (world.dragging.mol && e.pointerId === world.dragging.pointerId) {
-    if (canvas.hasPointerCapture?.(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
     armDraggedMoleculeRecovery(world.dragging.mol);
     clearDraggingState();
   }

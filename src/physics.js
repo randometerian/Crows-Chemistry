@@ -68,6 +68,10 @@ function updateLightBeamTarget(target) {
 }
 
 function stopLightBeam() {
+  const pointerId = world.light.pointerId;
+  if (pointerId != null && canvas.hasPointerCapture?.(pointerId)) {
+    canvas.releasePointerCapture(pointerId);
+  }
   world.light.firing = false;
   world.light.pointerId = null;
   world.light.source = null;
@@ -79,10 +83,23 @@ function stopLightBeam() {
   updateThermalLabels();
 }
 
+function getLuminescencePhaseScale(mol, response) {
+  const phaseScale = response.phaseEmissionScale?.[mol.phase];
+  let scale = phaseScale == null
+    ? (mol.phase === 'gas' ? 1 : mol.phase === 'liquid' ? 0.72 : mol.phase === 'particle' ? 0.5 : 0.42)
+    : phaseScale;
+  if (mol.dissolved) scale *= 0.42;
+  if (response.lineEmitter && mol.phase !== 'gas') scale *= 0.55;
+  return scale;
+}
+
 function applyLightExcitation(dt) {
   for (const mol of world.molecules) {
     if (!mol.alive) continue;
     mol.photoExcitation = Math.max(0, (mol.photoExcitation || 0) - dt * 0.45);
+    const emissionDecay = 1 / Math.max(0.12, mol.emissionLifetime || 0.30);
+    mol.emissionGlow = Math.max(0, (mol.emissionGlow || 0) - dt * emissionDecay);
+    if (mol.emissionGlow < 0.015) mol.emissionGlow = 0;
     mol.lastLightBand = null;
     for (const atom of mol.atoms) {
       atom.excited = Math.max(0, (atom.excited || 0) - dt * 0.9);
@@ -120,13 +137,29 @@ function applyLightExcitation(dt) {
 
     if (bestHit <= 0) continue;
     const response = getMaterialLightResponse(mol.type, band.id);
-    const bandBoost = band.photochemical ? 1.15 : (band.id === 'visible' ? 0.55 : 0.25);
+    const visibleBand = isVisibleLightBand(band.id);
+    const bandBoost = band.photochemical ? 1.15 : (visibleBand ? 0.55 : 0.25);
     const excitationGain = bestHit * dt * 5.2 * bandBoost * response.absorption * response.excitationMultiplier;
+    const canEmitVisible = response.emissionStrength > 0 &&
+      response.emittedBand === 'visible' &&
+      materialRespondsToLightBand(response.luminescenceBands, band.id);
+    const emissionBandBoost = band.id === 'uv' ? 1.16 : (visibleBand ? 0.88 : 0.52);
+    const visibleEmissionGain = canEmitVisible
+      ? excitationGain * response.emissionStrength * getLuminescencePhaseScale(mol, response) * emissionBandBoost
+      : 0;
     mol.photoExcitation = clamp((mol.photoExcitation || 0) + excitationGain, 0, 1.8);
     mol.lastLightBand = band.id;
+    if (visibleEmissionGain > 0.0006) {
+      mol.emissionGlow = clamp((mol.emissionGlow || 0) + visibleEmissionGain * (response.lineEmitter ? 6.8 : 5.2), 0, response.lineEmitter ? 1.7 : 1.35);
+      mol.emissionColor = response.emissionColor;
+      mol.emissionStyle = response.emissionStyle;
+      mol.emissionLifetime = response.emissionLifetime;
+    }
     for (const atom of mol.atoms) {
-      atom.excited = clamp((atom.excited || 0) + bestHit * dt * (band.photochemical ? 5.0 : 3.1) * response.absorption * response.excitationMultiplier + rand(0.01, 0.05), 0, 1.4);
-      atom.excitedColor = response.emissionColor;
+      const baseExcitation = bestHit * dt * (band.photochemical ? 5.0 : 2.6) * response.absorption * response.excitationMultiplier;
+      const visibleBoost = canEmitVisible ? (0.34 + response.emissionStrength * 0.95) : 0.14;
+      atom.excited = clamp((atom.excited || 0) + baseExcitation * (0.45 + visibleBoost) + rand(0.005, 0.03), 0, 1.4);
+      atom.excitedColor = canEmitVisible ? response.emissionColor : band.color;
     }
     if (response.lightToHeatFactor > 0) {
       world.heatPulseC = clamp(world.heatPulseC + excitationGain * response.lightToHeatFactor * 0.45, -900, 2200);
@@ -301,7 +334,6 @@ function updatePhysics(dt) {
   const b = world.bounds;
   const ambientTempC = getEffectiveTemperatureC();
   const pressureAtm = getEffectivePressureAtm();
-  const phasePressureAtm = world.pressureAtm;
   const ambientHeat = tempToHeatLevel(ambientTempC);
   const thermalScale = Math.sqrt(cToK(ambientTempC) / 298.15);
   const liquidLayout = getLiquidLayerLayout();
@@ -490,7 +522,7 @@ function updatePhysics(dt) {
   handleCarbonation(dt, ambientTempC, pressureAtm);
   handleAqueousIonChemistry(dt, ambientTempC, pressureAtm);
   handleLiquidMixing(dt);
-  handlePhaseTransitions(dt, ambientTempC, phasePressureAtm);
+  handlePhaseTransitions(dt, ambientTempC, pressureAtm);
   runScriptedReactions(dt, ambientTempC, pressureAtm);
 
   if (world.dragging.mol?.alive) {

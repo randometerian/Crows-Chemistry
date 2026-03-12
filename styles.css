@@ -1291,6 +1291,42 @@
       gap:5px;
     }
 
+    .presetGrid{
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:10px;
+      margin-top:10px;
+    }
+
+    .presetCard{
+      display:grid;
+      gap:7px;
+      padding:10px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.07);
+      background:rgba(255,255,255,.025);
+      min-width:0;
+    }
+
+    .presetCard strong{
+      color:var(--text);
+      font-size:11px;
+      line-height:1.2;
+    }
+
+    .presetCard span{
+      color:var(--muted);
+      font-size:10px;
+      line-height:1.35;
+    }
+
+    .presetMeta{
+      font-size:9px;
+      text-transform:uppercase;
+      letter-spacing:.06em;
+      color:rgba(212,222,235,.72);
+    }
+
     .inspectMini{
       display:grid;
       gap:3px;
@@ -1316,10 +1352,101 @@
       word-break:break-word;
     }
 
+    .ruleStatusList{
+      display:grid;
+      gap:8px;
+      margin-top:8px;
+    }
+
+    .ruleStatusEntry{
+      display:grid;
+      gap:6px;
+      padding:9px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.06);
+      background:rgba(255,255,255,.025);
+    }
+
+    .ruleStatusHead{
+      display:grid;
+      gap:2px;
+    }
+
+    .ruleStatusHead strong{
+      color:var(--text);
+      font-size:11px;
+      line-height:1.25;
+    }
+
+    .ruleStatusRow{
+      display:grid;
+      gap:6px;
+    }
+
+    .ruleStatusBadge{
+      display:inline-flex;
+      align-items:center;
+      width:max-content;
+      border-radius:999px;
+      padding:4px 8px;
+      font-size:10px;
+      text-transform:uppercase;
+      letter-spacing:.06em;
+      border:1px solid rgba(255,255,255,.08);
+      color:var(--muted);
+      background:rgba(255,255,255,.04);
+    }
+
+    .ruleStatusBadge.ready{
+      color:#bdf4c7;
+      border-color:rgba(108,216,137,.24);
+      background:rgba(76,180,103,.13);
+    }
+
+    .ruleStatusBadge.blocked{
+      color:#ffe0b2;
+      border-color:rgba(255,184,107,.24);
+      background:rgba(255,173,82,.13);
+    }
+
+    .ruleStatusBadge.missing{
+      color:#d4dded;
+      border-color:rgba(190,204,224,.20);
+      background:rgba(161,178,204,.12);
+    }
+
+    .ruleBlockerList{
+      display:flex;
+      flex-wrap:wrap;
+      gap:6px;
+    }
+
+    .ruleBlocker{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      font-size:10px;
+      border-radius:999px;
+      padding:4px 8px;
+      border:1px solid rgba(255,255,255,.08);
+      background:rgba(255,255,255,.03);
+      color:var(--muted);
+    }
+
+    .ruleBlocker.ready{
+      color:#bdf4c7;
+      border-color:rgba(108,216,137,.20);
+      background:rgba(76,180,103,.10);
+    }
+
     @media (max-width: 360px){
       .inspectMetaGrid,
       .inspectSummaryGrid{
         grid-template-columns:repeat(2, minmax(0, 1fr));
+      }
+
+      .presetGrid{
+        grid-template-columns:1fr;
       }
     }
 

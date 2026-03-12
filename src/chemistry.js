@@ -835,11 +835,7 @@ function participantsSatisfyPhotochemistry(rule, participants) {
   if (!world.light.firing) return false;
 
   const requiredBandId = rule.conditions?.requiredLightBand || null;
-  if (requiredBandId) {
-    const currentBand = getLightBand(world.light.band);
-    const requiredBand = getLightBand(requiredBandId);
-    if (currentBand.energy < requiredBand.energy) return false;
-  }
+  if (requiredBandId && !lightBandSatisfiesRequirement(world.light.band, requiredBandId)) return false;
 
   const threshold = Math.max(0.1, Number(rule.conditions?.excitationMin) || 0.55);
   const excitedTypes = Array.isArray(rule.conditions?.excitedTypes) && rule.conditions.excitedTypes.length
@@ -850,9 +846,94 @@ function participantsSatisfyPhotochemistry(rule, participants) {
     participants.some(mol =>
       mol.type === type &&
       (mol.photoExcitation || 0) >= threshold &&
-      (!requiredBandId || (mol.lastLightBand && getLightBand(mol.lastLightBand).energy >= getLightBand(requiredBandId).energy))
+      (!requiredBandId || (mol.lastLightBand && lightBandSatisfiesRequirement(mol.lastLightBand, requiredBandId)))
     )
   );
+}
+
+function getReactionRuleDiagnostics(rule, options = {}) {
+  const ambientTempC = options.ambientTempC ?? getEffectiveTemperatureC();
+  const pressureAtm = options.pressureAtm ?? getEffectivePressureAtm();
+  const active = (options.molecules || world.molecules).filter(m => m.alive);
+  const blockers = [];
+  const phase = rule.conditions?.phase || null;
+  const requiredCounts = {};
+  const missing = [];
+  const wrongPhase = [];
+
+  for (const part of rule.reactants || []) {
+    const count = Math.max(1, Number(part.count) || 1);
+    requiredCounts[part.type] = (requiredCounts[part.type] || 0) + count;
+  }
+
+  for (const [type, count] of Object.entries(requiredCounts)) {
+    const available = active.filter(mol => mol.type === type).length;
+    if (available < count) {
+      missing.push(`${count - available} ${getSpeciesDisplayLabel(type)}`);
+      continue;
+    }
+    if (phase) {
+      const phaseAvailable = active.filter(mol => mol.type === type && mol.phase === phase).length;
+      if (phaseAvailable < count) wrongPhase.push(`${getSpeciesDisplayLabel(type)} in ${phase}`);
+    }
+  }
+
+  if (missing.length) blockers.push(`Need ${missing.join(', ')}`);
+  if (wrongPhase.length) blockers.push(`Requires ${wrongPhase.join(' and ')}`);
+
+  const minTemp = rule.conditions?.tempMinC;
+  const maxTemp = rule.conditions?.tempMaxC;
+  if (Number.isFinite(minTemp) && ambientTempC < minTemp) blockers.push(`Heat to ${Math.round(minTemp)}°C`);
+  if (Number.isFinite(maxTemp) && ambientTempC > maxTemp) blockers.push(`Cool below ${Math.round(maxTemp)}°C`);
+
+  const minPressure = rule.conditions?.pressureMinAtm;
+  const maxPressure = rule.conditions?.pressureMaxAtm;
+  if (Number.isFinite(minPressure) && pressureAtm < minPressure) blockers.push(`Raise pressure to ${formatPressureAtm(minPressure)} atm`);
+  if (Number.isFinite(maxPressure) && pressureAtm > maxPressure) blockers.push(`Drop pressure below ${formatPressureAtm(maxPressure)} atm`);
+
+  if (rule.conditions?.requiresLight) {
+    const requiredBandId = rule.conditions?.requiredLightBand || null;
+    const requiredBandLabel = requiredBandId ? getLightBand(requiredBandId).label : 'light';
+    if (!world.light.firing) {
+      blockers.push(`Needs ${requiredBandLabel}`);
+    } else if (requiredBandId && !lightBandSatisfiesRequirement(world.light.band, requiredBandId)) {
+      blockers.push(`Switch beam to ${requiredBandLabel}`);
+    } else {
+      const threshold = Math.max(0.1, Number(rule.conditions?.excitationMin) || 0.55);
+      const excitedTypes = Array.isArray(rule.conditions?.excitedTypes) && rule.conditions.excitedTypes.length
+        ? rule.conditions.excitedTypes
+        : [rule.expandedReactants[0]].filter(Boolean);
+      const waitingOn = excitedTypes.filter(type =>
+        !active.some(mol =>
+          mol.type === type &&
+          (mol.photoExcitation || 0) >= threshold &&
+          (!requiredBandId || (mol.lastLightBand && lightBandSatisfiesRequirement(mol.lastLightBand, requiredBandId)))
+        )
+      );
+      if (waitingOn.length) blockers.push(`Excite ${waitingOn.map(getSpeciesDisplayLabel).join(', ')}`);
+    }
+  }
+
+  let hasContact = false;
+  if (!missing.length && !wrongPhase.length) {
+    const proximity = rule.conditions?.proximity ?? 140;
+    const spatialIndex = buildMoleculeSpatialIndex(active, Math.max(180, proximity + 30));
+    const anchors = active.filter(mol => mol.type === rule.expandedReactants[0] && (!phase || mol.phase === phase));
+    for (const anchor of anchors) {
+      const participants = findRuleParticipants(rule, anchor, new Set(), spatialIndex);
+      if (participants) {
+        hasContact = true;
+        break;
+      }
+    }
+    if (!hasContact) blockers.push(`Bring reactants within ${Math.round(proximity)} px`);
+  }
+
+  return {
+    status: blockers.length === 0 ? 'ready' : missing.length ? 'missing' : 'blocked',
+    blockers,
+    hasContact
+  };
 }
 
 function findRuleParticipants(rule, anchor, reservedIds, spatialIndex = null) {

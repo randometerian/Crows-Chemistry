@@ -47,6 +47,75 @@ function emptyStateMarkup(icon, title, message) {
   `;
 }
 
+const SCENE_PRESETS = [
+  {
+    key: 'layer-stack',
+    name: 'Layer Stack',
+    note: 'Heavy solvent below water with a chlorine headspace for density and phase demos.',
+    settings: { temperatureC: 18, pressureAtm: 1, lightBand: 'visible-blue' },
+    groups: [
+      { type: 'H2O', count: 14, x: 0.48, y: 0.73, spreadX: 220, spreadY: 92 },
+      { type: 'CH2Cl2', count: 10, x: 0.52, y: 0.82, spreadX: 200, spreadY: 72 },
+      { type: 'Cl2', count: 5, x: 0.50, y: 0.24, spreadX: 220, spreadY: 68 }
+    ]
+  },
+  {
+    key: 'uv-chlorination',
+    name: 'UV Chlorination',
+    note: 'Methane and chlorine staged for the photochemical chain under UV.',
+    settings: { temperatureC: 52, pressureAtm: 1.15, lightBand: 'uv' },
+    groups: [
+      { type: 'CH4', count: 6, x: 0.42, y: 0.25, spreadX: 160, spreadY: 72 },
+      { type: 'Cl2', count: 6, x: 0.58, y: 0.25, spreadX: 170, spreadY: 72 }
+    ]
+  },
+  {
+    key: 'pressure-synthesis',
+    name: 'Pressure Synthesis',
+    note: 'CO and hydrogen loaded for methanol synthesis at industrial-like pressure.',
+    settings: { temperatureC: 240, pressureAtm: 60, lightBand: 'infrared' },
+    groups: [
+      { type: 'CO', count: 5, x: 0.42, y: 0.28, spreadX: 170, spreadY: 74 },
+      { type: 'H2', count: 10, x: 0.58, y: 0.28, spreadX: 200, spreadY: 80 }
+    ]
+  },
+  {
+    key: 'carbon-capture',
+    name: 'Carbon Capture',
+    note: 'Water, caustic soda, and CO2 for bicarbonate and carbonate pathways.',
+    settings: { temperatureC: 34, pressureAtm: 1.4, lightBand: 'visible-green' },
+    groups: [
+      { type: 'H2O', count: 12, x: 0.50, y: 0.74, spreadX: 210, spreadY: 88 },
+      { type: 'NaOH', count: 8, x: 0.50, y: 0.76, spreadX: 170, spreadY: 60 },
+      { type: 'CO2', count: 6, x: 0.50, y: 0.26, spreadX: 200, spreadY: 70 }
+    ]
+  }
+];
+
+function ruleStatusLabel(status) {
+  if (status === 'ready') return 'Ready now';
+  if (status === 'missing') return 'Need reagents';
+  return 'Blocked';
+}
+
+function ruleStatusWeight(status) {
+  if (status === 'ready') return 0;
+  if (status === 'blocked') return 1;
+  return 2;
+}
+
+function ruleStatusMarkup(diag) {
+  const blockerMarkup = diag.blockers.length
+    ? diag.blockers.slice(0, 3).map(text => `<span class="ruleBlocker">${text}</span>`).join('')
+    : `<span class="ruleBlocker ready">Reactants, contact, and conditions are lined up.</span>`;
+  return `
+    <div class="ruleStatusRow">
+      <span class="ruleStatusBadge ${diag.status}">${ruleStatusLabel(diag.status)}</span>
+      <div class="ruleBlockerList">${blockerMarkup}</div>
+    </div>
+  `;
+}
+
 function updateTempInputConstraints() {
   if (world.ui.tempInputUnit === 'F') {
     tempInput.min = String(Math.round(cToF(TEMP_MIN_C)));
@@ -82,7 +151,8 @@ function updateThermalLabels() {
   const doseFill = ((Math.abs(world.heatDoseC) - Number(heatDoseSlider.min)) / (Number(heatDoseSlider.max) - Number(heatDoseSlider.min))) * 100;
   const stirFill = ((world.stirStrength - Number(stirStrengthSlider.min)) / (Number(stirStrengthSlider.max) - Number(stirStrengthSlider.min))) * 100;
   const lightFill = ((world.lightStrength - Number(lightStrengthSlider.min)) / (Number(lightStrengthSlider.max) - Number(lightStrengthSlider.min))) * 100;
-  const lightBandFill = ((LIGHT_BANDS.findIndex(entry => entry.id === world.light.band) - Number(lightBandSlider.min)) / (Number(lightBandSlider.max) - Number(lightBandSlider.min))) * 100;
+  const lightBandIndex = Math.max(0, LIGHT_BANDS.findIndex(entry => entry.id === world.light.band));
+  const lightBandFill = ((lightBandIndex - Number(lightBandSlider.min)) / (Number(lightBandSlider.max) - Number(lightBandSlider.min))) * 100;
   const pressureFill = sliderNorm(pressureSliderValue, Number(pressureSlider.min), Number(pressureSlider.max)) * 100;
   heatSlider.style.setProperty('--fill', `${clamp(fill, 0, 100)}%`);
   heatDoseSlider.style.setProperty('--fill', `${clamp(doseFill, 0, 100)}%`);
@@ -106,7 +176,7 @@ function updateThermalLabels() {
   lightStrengthLabel.textContent = 'Beam intensity';
   lightStrengthValue.textContent = `${world.lightStrength.toFixed(1)}x`;
   lightBandLabel.textContent = 'EM frequency';
-  lightBandSlider.value = String(Math.max(0, LIGHT_BANDS.findIndex(entry => entry.id === world.light.band)));
+  lightBandSlider.value = String(lightBandIndex);
   lightBandValue.textContent = getLightBand(world.light.band).label;
   const gasCount = getGasMoleculeCount();
   const stirringText = world.stirring.timeLeft > 0 ? ` • Stirring ${world.stirring.timeLeft.toFixed(1)}s @ ${world.stirring.power.toFixed(1)}x` : '';
@@ -285,6 +355,47 @@ function addLibraryItem(key) {
   }
 }
 
+function spawnScenePresetGroup(group) {
+  const b = world.bounds;
+  if (!b) return;
+  const count = Math.max(1, Number(group.count) || 1);
+  const cols = Math.max(1, Math.ceil(Math.sqrt(count)));
+  const rows = Math.max(1, Math.ceil(count / cols));
+  const cx = b.x + b.w * (group.x ?? 0.5);
+  const cy = b.y + b.h * (group.y ?? 0.5);
+  const spreadX = group.spreadX ?? 120;
+  const spreadY = group.spreadY ?? 80;
+
+  for (let i = 0; i < count; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const nx = cols === 1 ? 0 : (col / (cols - 1)) - 0.5;
+    const ny = rows === 1 ? 0 : (row / (rows - 1)) - 0.5;
+    const x = cx + nx * spreadX + rand(-10, 10);
+    const y = cy + ny * spreadY + rand(-10, 10);
+    if (group.type.startsWith('atom-')) addAtom(group.type.replace('atom-', ''), x, y, { select: false });
+    else addMolecule(group.type, x, y, { select: false });
+  }
+}
+
+function loadScenePreset(key) {
+  const preset = SCENE_PRESETS.find(entry => entry.key === key);
+  if (!preset || !world.bounds) return;
+  clearWorld();
+  world.temperatureC = preset.settings.temperatureC ?? world.temperatureC;
+  world.pressureAtm = preset.settings.pressureAtm ?? world.pressureAtm;
+  world.light.band = preset.settings.lightBand || world.light.band;
+  world.ui.activeTool = 'select';
+  world.selectedMolId = null;
+  for (const group of preset.groups) {
+    spawnScenePresetGroup(group);
+  }
+  addReactionLog('system', `Loaded preset: ${preset.name}`);
+  markSidebarDirty();
+  renderSidebar();
+  updateThermalLabels();
+}
+
 function removeSelectedMolecule() {
   const mol = getSelectedMolecule();
   if (!mol) return;
@@ -411,6 +522,37 @@ function renderSceneTab() {
   const list = document.createElement('div');
   list.className = 'scroll';
   const liquidLayout = getLiquidLayerLayout();
+
+  const presetCard = document.createElement('div');
+  presetCard.className = 'card';
+  presetCard.innerHTML = `
+    <div class="cardTop">
+      <div class="cardTitle">
+        <strong>Quick Experiments</strong>
+        <span>Load a staged scene instead of building from scratch</span>
+      </div>
+      ${phaseTagMarkup('preset', 'data')}
+    </div>
+  `;
+  const presetGrid = document.createElement('div');
+  presetGrid.className = 'presetGrid';
+  for (const preset of SCENE_PRESETS) {
+    const tile = document.createElement('div');
+    tile.className = 'presetCard';
+    tile.innerHTML = `
+      <strong>${preset.name}</strong>
+      <span>${preset.note}</span>
+      <div class="presetMeta">${Math.round(preset.settings.temperatureC)}°C • ${formatPressureAtm(preset.settings.pressureAtm)} atm • ${getLightBand(preset.settings.lightBand).label}</div>
+    `;
+    const loadBtn = document.createElement('button');
+    loadBtn.className = 'miniBtn primary';
+    loadBtn.textContent = 'Load preset';
+    loadBtn.addEventListener('click', () => loadScenePreset(preset.key));
+    tile.appendChild(loadBtn);
+    presetGrid.appendChild(tile);
+  }
+  presetCard.appendChild(presetGrid);
+  list.appendChild(presetCard);
 
   for (const layer of liquidLayout.layers) {
     if (!layer.chemistry) continue;
@@ -584,8 +726,8 @@ function renderInspectTab() {
     <div class="kv"><span>Condensation</span><strong>${material.descriptors.condensationLevel}</strong></div>
     <div class="kv"><span>Aqueous role</span><strong>${material.aqueous.role}</strong></div>
     <div class="kv"><span>Nominal pH</span><strong>${material.aqueous.pH == null ? 'n/a' : material.aqueous.pH.toFixed(1)}</strong></div>
-    <div class="kv"><span>Light bands</span><strong>${material.optical.absorptionBands.join(', ')}</strong></div>
-    <div class="kv"><span>Emission color</span><strong>${material.optical.emissionColor}</strong></div>
+    <div class="kv"><span>Light bands</span><strong>${formatLightBandList(material.optical.absorptionBands)}</strong></div>
+    <div class="kv"><span>Luminescence</span><strong>${material.optical.emissionStrength > 0 ? `${formatLightBandList(material.optical.luminescenceBands)} -> ${material.optical.emissionColor}` : 'none'}</strong></div>
   `;
 
   const evap = EVAPORATION_CONFIG[selected.type];
@@ -607,6 +749,9 @@ function renderInspectTab() {
     : (!ionProfile && weakAcid && selected.phase === 'liquid')
     ? 'Behaves as a weak acid in water.'
     : `${material.aqueous.role === 'neutral' ? 'No special aqueous chemistry.' : `Aqueous role: ${material.aqueous.role}.`}`;
+  const opticalText = (material.optical.emissionStrength || 0) > 0
+    ? `Absorbs ${formatLightBandList(material.optical.absorptionBands)} and re-emits ${material.optical.emissionColor} light after ${formatLightBandList(material.optical.luminescenceBands)} exposure.`
+    : `Absorbs ${formatLightBandList(material.optical.absorptionBands)}. Primary emission band is ${getLightBand(material.optical.emittedBand).label}.`;
   summary.innerHTML = `
     <div class="inspectSummaryTitle">${getSpeciesDisplayName(selected.type)}</div>
     <div class="inspectSummaryText">${intro}</div>
@@ -616,10 +761,37 @@ function renderInspectTab() {
       <div class="inspectMini"><span>Made from</span><strong>${formatSpeciesList(profile.formedFrom, 4)}</strong></div>
       <div class="inspectMini"><span>Thermal</span><strong>${thermalText}</strong></div>
       <div class="inspectMini"><span>Aqueous</span><strong>${aqueousText}</strong></div>
-      <div class="inspectMini"><span>Optical</span><strong>Absorbs ${material.optical.absorptionBands.join(', ')}; emits ${material.optical.emittedBand} ${material.optical.emissionColor}.</strong></div>
+      <div class="inspectMini"><span>Optical</span><strong>${opticalText}</strong></div>
     </div>
     ${material.descriptors.notes ? `<div class="inspectSummaryText">${material.descriptors.notes}</div>` : ''}
   `;
+
+  const reactantDiagnostics = profile.reactantRules
+    .map(rule => ({ rule, diag: getReactionRuleDiagnostics(rule, { focusType: selected.type }) }))
+    .sort((a, b) => {
+      const statusDelta = ruleStatusWeight(a.diag.status) - ruleStatusWeight(b.diag.status);
+      return statusDelta || a.rule.name.localeCompare(b.rule.name);
+    });
+  let readiness = null;
+  if (reactantDiagnostics.length) {
+    readiness = document.createElement('div');
+    readiness.className = 'hintBox';
+    readiness.innerHTML = `
+      <div class="inspectSummaryTitle">Rule Readiness</div>
+      <div class="inspectSummaryText">Why the selected species will or will not take part in each scripted pathway right now.</div>
+      <div class="ruleStatusList">
+        ${reactantDiagnostics.map(({ rule, diag }) => `
+          <div class="ruleStatusEntry">
+            <div class="ruleStatusHead">
+              <strong>${rule.name}</strong>
+              <span class="small">${reactionEquation(rule)}</span>
+            </div>
+            ${ruleStatusMarkup(diag)}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
 
   const actions = document.createElement('div');
   actions.className = 'cardActions';
@@ -639,6 +811,7 @@ function renderInspectTab() {
 
   card.appendChild(grid);
   card.appendChild(summary);
+  if (readiness) card.appendChild(readiness);
   card.appendChild(actions);
 
   list.appendChild(card);
@@ -702,7 +875,13 @@ function renderReactionsTab() {
   const knownList = document.createElement('div');
   knownList.style.display = 'grid';
   knownList.style.gap = '8px';
-  for (const rule of visibleRules) {
+  const ruleDiagnostics = visibleRules
+    .map(rule => ({ rule, diag: getReactionRuleDiagnostics(rule) }))
+    .sort((a, b) => {
+      const statusDelta = ruleStatusWeight(a.diag.status) - ruleStatusWeight(b.diag.status);
+      return statusDelta || a.rule.name.localeCompare(b.rule.name);
+    });
+  for (const { rule, diag } of ruleDiagnostics) {
     const row = document.createElement('div');
     row.className = 'hintBox';
     row.innerHTML = `
@@ -712,6 +891,7 @@ function renderReactionsTab() {
         ${thermalWindowMarkup(rule)}
         ${pressureWindowMarkup(rule)}
       </div>
+      ${ruleStatusMarkup(diag)}
       ${reactionEquation(rule)}<br>
       <span style="color:var(--muted)">${rule.note || 'Scripted pathway.'}</span>
     `;
