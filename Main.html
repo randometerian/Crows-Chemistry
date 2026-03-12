@@ -22,7 +22,9 @@
       </div>
 
       <div class="searchWrap">
-        <span class="searchIcon">⌕</span>
+        <span class="searchIcon" aria-hidden="true">
+          <i data-lucide="search"></i>
+        </span>
         <input id="searchInput" type="text" placeholder="Search atoms, molecules, formulas..." />
         <button id="searchClearBtn" class="searchClear" type="button" aria-label="Clear search">×</button>
       </div>
@@ -38,26 +40,73 @@
 
       <div class="footerRow">
         <span id="sidebarFooterText">0 molecules in sandbox</span>
-        <button id="clearBtn" class="miniBtn">Clear all</button>
+        <button id="clearBtn" class="miniBtn iconBtn" type="button">
+          <span class="buttonIcon" aria-hidden="true">
+            <i data-lucide="trash-2"></i>
+          </span>
+          <span class="buttonLabel" data-btn-label>Clear all</span>
+        </button>
       </div>
     </div>
 
     <div class="panel bottom">
+      <div class="panelIntro">
+        <span class="panelTag">
+          <i data-lucide="sliders-horizontal" aria-hidden="true"></i>
+          <span>Control Deck</span>
+        </span>
+        <span class="panelSubtitle">Run the sim, fire tools, and tune the vessel conditions.</span>
+      </div>
+
       <div class="toolbar">
         <div class="controlBar">
-          <button id="playPauseBtn">Pause</button>
-          <button id="timeScaleBtn">Time 1x</button>
+          <button id="playPauseBtn" class="iconBtn utilityBtn" type="button">
+            <span class="buttonIcon" aria-hidden="true">
+              <i data-lucide="power"></i>
+            </span>
+            <span class="buttonStack">
+              <span class="buttonLabel" data-btn-label>Pause</span>
+              <span class="buttonMeta">Simulation</span>
+            </span>
+          </button>
+          <button id="timeScaleBtn" class="iconBtn utilityBtn" type="button">
+            <span class="buttonIcon" aria-hidden="true">
+              <i data-lucide="gauge"></i>
+            </span>
+            <span class="buttonStack">
+              <span class="buttonLabel" data-btn-label>Time 1x</span>
+              <span class="buttonMeta">Speed</span>
+            </span>
+          </button>
         </div>
 
         <div class="controlGroup open" data-control="heat">
           <button class="controlToggle" type="button">
-            <span>Heat</span>
-            <span class="controlChevron">+</span>
+            <span class="controlHeading">
+              <span class="controlGlyph" aria-hidden="true">
+                <i data-lucide="thermometer"></i>
+              </span>
+              <span class="controlCopy">
+                <span class="controlTitle">Heat</span>
+                <span class="controlHint">Pulse and dose</span>
+              </span>
+            </span>
+            <span class="controlChevron" aria-hidden="true">+</span>
           </button>
           <div class="controlBody">
             <div class="heatActionRow">
-              <button id="heatPulseBtn">Heat Pulse</button>
-              <button id="coolPulseBtn" class="miniBtn">Cooling Pulse</button>
+              <button id="heatPulseBtn" class="iconBtn actionBtn" type="button">
+                <span class="buttonIcon" aria-hidden="true">
+                  <i data-lucide="flame"></i>
+                </span>
+                <span class="buttonLabel" data-btn-label>Heat Pulse</span>
+              </button>
+              <button id="coolPulseBtn" class="miniBtn iconBtn actionBtn" type="button">
+                <span class="buttonIcon" aria-hidden="true">
+                  <i data-lucide="snowflake"></i>
+                </span>
+                <span class="buttonLabel" data-btn-label>Cooling Pulse</span>
+              </button>
             </div>
             <div class="heatDoseWrap">
               <div class="heatDoseLabel">
@@ -71,12 +120,25 @@
 
         <div class="controlGroup open" data-control="light">
           <button class="controlToggle" type="button">
-            <span>Light Tool</span>
-            <span class="controlChevron">+</span>
+            <span class="controlHeading">
+              <span class="controlGlyph" aria-hidden="true">
+                <i data-lucide="zap"></i>
+              </span>
+              <span class="controlCopy">
+                <span class="controlTitle">Light Tool</span>
+                <span class="controlHint">Beam and EM band</span>
+              </span>
+            </span>
+            <span class="controlChevron" aria-hidden="true">+</span>
           </button>
           <div class="controlBody">
             <div class="heatActionRow">
-              <button id="lightBtn">Beam Tool</button>
+              <button id="lightBtn" class="iconBtn actionBtn" type="button">
+                <span class="buttonIcon" aria-hidden="true">
+                  <i data-lucide="zap"></i>
+                </span>
+                <span class="buttonLabel" data-btn-label>Light Tool</span>
+              </button>
             </div>
             <div class="lightWrap">
               <div class="heatDoseLabel">
@@ -97,12 +159,25 @@
 
         <div class="controlGroup" data-control="stir">
           <button class="controlToggle" type="button">
-            <span>Stir</span>
-            <span class="controlChevron">+</span>
+            <span class="controlHeading">
+              <span class="controlGlyph" aria-hidden="true">
+                <i data-lucide="wind"></i>
+              </span>
+              <span class="controlCopy">
+                <span class="controlTitle">Stir</span>
+                <span class="controlHint">Mixing force</span>
+              </span>
+            </span>
+            <span class="controlChevron" aria-hidden="true">+</span>
           </button>
           <div class="controlBody">
             <div class="heatActionRow">
-              <button id="stirBtn">Stir</button>
+              <button id="stirBtn" class="iconBtn actionBtn" type="button">
+                <span class="buttonIcon" aria-hidden="true">
+                  <i data-lucide="wind"></i>
+                </span>
+                <span class="buttonLabel" data-btn-label>Stir</span>
+              </button>
             </div>
             <div class="stirWrap">
               <div class="heatDoseLabel">
@@ -116,8 +191,16 @@
 
         <div class="controlGroup open" data-control="environment">
           <button class="controlToggle" type="button">
-            <span>Environment</span>
-            <span class="controlChevron">+</span>
+            <span class="controlHeading">
+              <span class="controlGlyph" aria-hidden="true">
+                <i data-lucide="sliders-horizontal"></i>
+              </span>
+              <span class="controlCopy">
+                <span class="controlTitle">Environment</span>
+                <span class="controlHint">Temperature and pressure</span>
+              </span>
+            </span>
+            <span class="controlChevron" aria-hidden="true">+</span>
           </button>
           <div class="controlBody">
             <div class="rangeWrap">
@@ -155,14 +238,23 @@
         </div>
       </div>
 
-      <div class="status" id="statusText">
-        Running<br>
-        0 molecules
+      <div class="status">
+        <div class="statusHead">
+          <span class="statusTitle">
+            <i data-lucide="activity" aria-hidden="true"></i>
+            <span>Live Status</span>
+          </span>
+        </div>
+        <div class="statusBody" id="statusText">
+          Running<br>
+          0 molecules
+        </div>
       </div>
     </div>
   </div>
 </div>
 
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
 <script src="./src/utils.js"></script>
 <script src="./src/species.js"></script>
 <script src="./src/chemistry.js"></script>

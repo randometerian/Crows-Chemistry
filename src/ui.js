@@ -92,11 +92,11 @@ function updateThermalLabels() {
   const lightText = world.light.firing ? ` • ${getLightBand(world.light.band).label} beam @ ${world.light.power.toFixed(1)}x` : (world.ui.activeTool === 'light' ? ` • Light tool armed (${getLightBand(world.light.band).label})` : '');
   const waterText = primaryChem ? ` • ${primaryChem.chemistryLabel}` : '';
   simLabel.textContent = `Base ${c}°C • Offset ${formatThermalDelta(pulse) || '0°C'} • Effective ${ambientC}°C • ${formatPressureAtm(effectivePressureAtm)} atm${waterText} • ${world.timeScale}x speed${stirringText}${lightText}`;
-  timeScaleBtn.textContent = `Time ${world.timeScale}x`;
+  setButtonLabel(timeScaleBtn, `Time ${world.timeScale}x`);
   stirBtn.classList.toggle('active', world.stirring.timeLeft > 0);
-  stirBtn.textContent = world.stirring.timeLeft > 0 ? 'Stirring' : 'Stir';
+  setButtonLabel(stirBtn, world.stirring.timeLeft > 0 ? 'Stirring' : 'Stir');
   lightBtn.classList.toggle('active', world.ui.activeTool === 'light');
-  lightBtn.textContent = world.ui.activeTool === 'light' ? 'Light Tool On' : 'Light Tool';
+  setButtonLabel(lightBtn, world.ui.activeTool === 'light' ? 'Light Tool On' : 'Light Tool');
   canvas.style.cursor = world.ui.activeTool === 'light' ? 'crosshair' : 'default';
   statusText.innerHTML = `${world.running ? 'Running' : 'Paused'}<br>${world.molecules.length} molecules<br>${ambientC}°C effective • ${formatPressureAtm(effectivePressureAtm)} atm${primaryChem ? ` • ${primaryChem.chemistryLabel}` : ''}<br>${world.stats.reactions} reactions • heat +${Math.round(world.thermalStats.addedC)} / -${Math.round(world.thermalStats.removedC)}${world.ui.activeTool === 'light' ? `<br>${getLightBand(world.light.band).label} tool ${world.light.firing ? `firing @ ${world.light.power.toFixed(1)}x` : 'armed'}` : ''}`;
 }

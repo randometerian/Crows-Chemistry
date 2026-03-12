@@ -34,6 +34,22 @@ const searchClearBtn = document.getElementById('searchClearBtn');
 const sidebarFooterText = document.getElementById('sidebarFooterText');
 const observationCounter = document.getElementById('observationCounter');
 
+function setButtonLabel(button, label) {
+  if (!button) return;
+  const labelNode = button.querySelector('[data-btn-label]');
+  if (labelNode) labelNode.textContent = label;
+  else button.textContent = label;
+}
+
+function refreshLucideIcons() {
+  if (!window.lucide?.createIcons) return;
+  window.lucide.createIcons({
+    attrs: {
+      'stroke-width': 1.9
+    }
+  });
+}
+
 const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
 const TAU = Math.PI * 2;
 const GAS_CONSTANT_J_PER_MOL_K = 8.314462618;

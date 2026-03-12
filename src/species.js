@@ -1484,27 +1484,58 @@ function markSidebarDirty() {
 function getVesselRect() {
   const w = window.innerWidth;
   const h = window.innerHeight;
-  const sideW = Math.min(360, w - 28) + 28;
-  const compactHud = w <= 1100;
-
-  if (compactHud) {
-    const bottomH = 84;
-
+  if (w <= 560) {
+    const margin = 12;
+    const topHud = Math.min(h * 0.42, 350);
+    const bottomHud = Math.min(h * 0.28, 220);
+    const gap = 12;
+    const x = margin;
+    const y = margin + topHud + gap;
     return {
-      x: Math.max(sideW + 18, 250),
-      y: 28,
-      w: Math.max(300, w - sideW - 32),
-      h: Math.max(240, h - bottomH - 42)
+      x,
+      y,
+      w: Math.max(220, w - margin * 2),
+      h: Math.max(150, h - y - bottomHud - margin - gap)
     };
   }
 
-  const rightPanelW = 368;
+  if (w <= 820) {
+    const margin = 12;
+    const topHud = Math.min(h * 0.46, 430);
+    const bottomHud = Math.min(h * 0.34, 284);
+    const gap = 12;
+    const x = margin;
+    const y = margin + topHud + gap;
+    return {
+      x,
+      y,
+      w: Math.max(240, w - margin * 2),
+      h: Math.max(170, h - y - bottomHud - margin - gap)
+    };
+  }
+
+  if (w <= 1100) {
+    const margin = 14;
+    const sideW = Math.min(340, Math.max(280, w * 0.38));
+    const bottomH = Math.min(h * 0.28, 216);
+    const x = margin + sideW + 16;
+    return {
+      x,
+      y: margin,
+      w: Math.max(260, w - x - margin),
+      h: Math.max(220, h - bottomH - margin * 2 - 12)
+    };
+  }
+
+  const margin = 14;
+  const sideW = Math.min(360, Math.max(320, w * 0.25));
+  const rightPanelW = Math.min(340, Math.max(300, w * 0.24));
 
   return {
-    x: Math.max(sideW + 18, 250),
-    y: 28,
-    w: Math.max(300, w - sideW - rightPanelW - 22),
-    h: Math.max(240, h - 42)
+    x: margin + sideW + 18,
+    y: margin,
+    w: Math.max(300, w - sideW - rightPanelW - margin * 2 - 18),
+    h: Math.max(240, h - margin * 2)
   };
 }
 

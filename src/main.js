@@ -140,7 +140,7 @@ function editableTarget(target) {
 
 function toggleRunning() {
   world.running = !world.running;
-  playPauseBtn.textContent = world.running ? 'Pause' : 'Play';
+  setButtonLabel(playPauseBtn, world.running ? 'Pause' : 'Play');
   markSidebarDirty();
   renderSidebar();
 }
@@ -407,6 +407,7 @@ async function initApp() {
   world.reactionData = await loadReactionData();
   await loadObservationCounter();
   resize();
+  refreshLucideIcons();
   updateSearchClearVisibility();
   updateThermalLabels();
   syncTabButtons();
