@@ -177,6 +177,125 @@ function applyStirring(dt) {
   }
 }
 
+function pinDraggedMolecule(mol, b, dt, allowStretch = false) {
+  if (!mol || !b) return;
+  const anchor = mol.atoms.find(atom => atom.id === world.dragging.atomId) || mol.atoms[0];
+  if (!anchor) return;
+  const dx = world.dragging.targetX - anchor.x;
+  const dy = world.dragging.targetY - anchor.y;
+  const dragMotion = Math.hypot(world.dragging.momentumX, world.dragging.momentumY);
+  const carry = clamp(0.82 + dragMotion * 0.006, 0.82, 0.94);
+
+  for (const atom of mol.atoms) {
+    if (atom === anchor) continue;
+    atom.x += dx * carry;
+    atom.y += dy * carry;
+  }
+
+  anchor.x = world.dragging.targetX;
+  anchor.y = world.dragging.targetY;
+  anchor.fx = 0;
+  anchor.fy = 0;
+  anchor.vx = world.dragging.momentumX * 0.18;
+  anchor.vy = world.dragging.momentumY * 0.18;
+
+  for (const atom of mol.atoms) {
+    if (atom === anchor) continue;
+    atom.fx = 0;
+    atom.fy = 0;
+    atom.vx *= 0.992;
+    atom.vy *= 0.992;
+  }
+
+  if (allowStretch && mol.atoms.length > 1 && dragMotion > 0.08) {
+    const center = moleculeCenter(mol);
+    const radius = Math.max(10, moleculeRadius(mol));
+    const dragDirX = world.dragging.momentumX / dragMotion;
+    const dragDirY = world.dragging.momentumY / dragMotion;
+    const tangentX = -dragDirY;
+    const tangentY = dragDirX;
+    const stretch = clamp(dragMotion * 0.010, 0, 0.22);
+
+    for (const atom of mol.atoms) {
+      if (atom === anchor) continue;
+      const relX = atom.x - center.x;
+      const relY = atom.y - center.y;
+      const along = (relX * dragDirX + relY * dragDirY) / radius;
+      const across = (relX * tangentX + relY * tangentY) / radius;
+      const lag = clamp(0.72 - along, 0.08, 0.78);
+      atom.vx -= dragDirX * stretch * lag;
+      atom.vy -= dragDirY * stretch * lag;
+      atom.vx += tangentX * across * stretch * 0.16;
+      atom.vy += tangentY * across * stretch * 0.16;
+    }
+  }
+
+  keepMoleculeInsideVessel(mol, b);
+  const postAnchor = mol.atoms.find(atom => atom.id === world.dragging.atomId) || anchor;
+  if (postAnchor) {
+    const fixX = world.dragging.targetX - postAnchor.x;
+    const fixY = world.dragging.targetY - postAnchor.y;
+    for (const atom of mol.atoms) {
+      atom.x += fixX;
+      atom.y += fixY;
+    }
+    postAnchor.x = world.dragging.targetX;
+    postAnchor.y = world.dragging.targetY;
+  }
+  limitMoleculeBondStretch(mol, 1.14, anchor.id);
+  if (allowStretch) {
+    const dragDecay = Math.pow(0.00018, dt);
+    world.dragging.momentumX *= dragDecay;
+    world.dragging.momentumY *= dragDecay;
+  }
+}
+
+function limitMoleculeBondStretch(mol, maxStretchScale = 1.14, pinnedAtomId = null) {
+  if (!mol?.bonds?.length) return;
+
+  for (const bond of mol.bonds) {
+    const a = mol.atoms[bond.a];
+    const b = mol.atoms[bond.b];
+    const maxLength = (bond.rest || 30) * maxStretchScale;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const distNow = Math.hypot(dx, dy);
+    if (!Number.isFinite(distNow) || distNow <= maxLength || distNow < 1e-6) continue;
+
+    const excess = distNow - maxLength;
+    const nx = dx / distNow;
+    const ny = dy / distNow;
+    const aPinned = pinnedAtomId != null && a.id === pinnedAtomId;
+    const bPinned = pinnedAtomId != null && b.id === pinnedAtomId;
+
+    if (aPinned && !bPinned) {
+      b.x -= nx * excess;
+      b.y -= ny * excess;
+      b.vx -= nx * excess * 0.12;
+      b.vy -= ny * excess * 0.12;
+      continue;
+    }
+
+    if (bPinned && !aPinned) {
+      a.x += nx * excess;
+      a.y += ny * excess;
+      a.vx += nx * excess * 0.12;
+      a.vy += ny * excess * 0.12;
+      continue;
+    }
+
+    const half = excess * 0.5;
+    a.x += nx * half;
+    a.y += ny * half;
+    b.x -= nx * half;
+    b.y -= ny * half;
+    a.vx += nx * half * 0.10;
+    a.vy += ny * half * 0.10;
+    b.vx -= nx * half * 0.10;
+    b.vy -= ny * half * 0.10;
+  }
+}
+
 
 function updatePhysics(dt) {
   const b = world.bounds;
@@ -206,30 +325,43 @@ function updatePhysics(dt) {
   applyMoleculeRepulsion(dt);
 
   for (const mol of world.molecules) {
+    const isDragged = world.dragging.mol?.id === mol.id;
+    const recoveryTimeLeft = Math.max(0, (mol.dragRecoveryUntil || 0) - world.time);
+    const recoveryDuration = Math.max(0.001, mol.dragRecoveryDuration || 0.85);
+    const recoveryProgress = recoveryTimeLeft > 0 ? clamp(recoveryTimeLeft / recoveryDuration, 0, 1) : 0;
+    const recoveryStrength = mol.dragRecoveryStrength || 1;
+    const releaseBondBoost = 1 + recoveryProgress * 2.35 * recoveryStrength;
+    const releaseDampingBoost = 1 + recoveryProgress * 2.0 * recoveryStrength;
+    const dragBondBoost = isDragged ? 3.1 : releaseBondBoost;
+    const dragDampingBoost = isDragged ? 2.4 : releaseDampingBoost;
     for (const bond of mol.bonds) {
       const a = mol.atoms[bond.a];
       const c = mol.atoms[bond.b];
       const k = 0.26 + 0.10 * bond.order;
-      springBond(a, c, bond.rest, k, 0.28, 1);
+      springBond(a, c, bond.rest, k * dragBondBoost, 0.28 * dragDampingBoost, 1);
     }
 
     for (const shape of (mol.shapeConstraints || [])) {
       const a = mol.atoms[shape.a];
       const c = mol.atoms[shape.b];
       const wobbleRest = shape.rest * (1 + Math.sin(world.time * 1.9 + shape.phase) * shape.wobble);
-      springBond(a, c, wobbleRest, shape.strength, shape.damping, 1);
+      springBond(a, c, wobbleRest, shape.strength * dragBondBoost, shape.damping * dragDampingBoost, 1);
       softRepulsion(a, c, shape.minDist, 0.07);
     }
 
     for (const ang of mol.angleConstraints) {
-      applyAngleConstraint(mol, ang, 0.032, dt);
+      const angleStrength = isDragged
+        ? 0.082
+        : 0.032 * (1 + recoveryProgress * 2.0 * recoveryStrength);
+      applyAngleConstraint(mol, ang, angleStrength, dt);
     }
   }
 
   for (const mol of world.molecules) {
     const center = moleculeCenter(mol);
+    const isDragged = world.dragging.mol?.id === mol.id;
 
-    if (mol.phase === 'gas') {
+    if (!isDragged && mol.phase === 'gas') {
       const pressureOffset = pressureAtm - 1;
       const gasTargetX = b.x + b.w * 0.5;
       const gasTargetY = b.y + b.h * 0.28;
@@ -249,7 +381,7 @@ function updatePhysics(dt) {
       ? getSolidLayerAnchor(mol, condensedLayer, b)
       : null;
 
-    if (mol.phase === 'particle' || mol.phase === 'solid') {
+    if (!isDragged && (mol.phase === 'particle' || mol.phase === 'solid')) {
       const settleBase = clamp((mol.density || 1) * 0.42, 0.18, 1.2);
       const settle = mol.phase === 'solid' && condensedLayer ? settleBase * 0.38 : settleBase;
       const yNorm = clamp((center.y - b.y) / b.h, 0, 1);
@@ -266,7 +398,7 @@ function updatePhysics(dt) {
       }
     }
 
-    if (mol.phase === 'liquid') {
+    if (!isDragged && mol.phase === 'liquid') {
       const yNorm = clamp((center.y - b.y) / b.h, 0, 1);
       const targetYNorm = condensedLayer
         ? clamp((condensedLayer.centerY - b.y) / b.h, 0.16, 0.93)
@@ -289,16 +421,37 @@ function updatePhysics(dt) {
       }
     }
 
-    const boundaryTargetX = solidAnchor?.x ?? (b.x + b.w * 0.5);
-    const boundaryPullStrength = solidAnchor ? 0.0018 : 0.0008;
-    const boundaryPullX = (boundaryTargetX - center.x) * boundaryPullStrength;
-    for (const a of mol.atoms) {
-      a.fx += boundaryPullX;
+    if (!isDragged) {
+      const boundaryTargetX = solidAnchor?.x ?? (b.x + b.w * 0.5);
+      const boundaryPullStrength = solidAnchor ? 0.0018 : 0.0008;
+      const boundaryPullX = (boundaryTargetX - center.x) * boundaryPullStrength;
+      for (const a of mol.atoms) {
+        a.fx += boundaryPullX;
+      }
     }
 
-    const baseDamp = mol.phase === 'gas' || mol.phase === 'particle' || mol.phase === 'solid'
-      ? (0.996 - ambientHeat * 0.005 - Math.max(0, pressureAtm - 1) * 0.0016)
-      : (0.993 - ambientHeat * 0.0025);
+    const recoveryTimeLeft = Math.max(0, (mol.dragRecoveryUntil || 0) - world.time);
+    if (recoveryTimeLeft > 0 && !isDragged) {
+      const recoveryDuration = Math.max(0.001, mol.dragRecoveryDuration || 0.85);
+      const recoveryProgress = clamp(recoveryTimeLeft / recoveryDuration, 0, 1);
+      const recoveryStrength = mol.dragRecoveryStrength || 1;
+      const settle = recoveryProgress * recoveryStrength;
+      for (const a of mol.atoms) {
+        a.vx *= 1 - Math.min(0.12, settle * 0.06);
+        a.vy *= 1 - Math.min(0.12, settle * 0.06);
+      }
+      limitMoleculeBondStretch(mol, 1.08 + (1 - recoveryProgress) * 0.04);
+      if (recoveryTimeLeft <= dt * 1.2) {
+        mol.dragRecoveryUntil = 0;
+        mol.dragRecoveryStrength = 1;
+      }
+    }
+
+    const baseDamp = isDragged
+      ? 0.9945
+      : (mol.phase === 'gas' || mol.phase === 'particle' || mol.phase === 'solid'
+          ? (0.996 - ambientHeat * 0.005 - Math.max(0, pressureAtm - 1) * 0.0016)
+        : (0.993 - ambientHeat * 0.0025));
 
     for (const a of mol.atoms) {
       a.vx *= baseDamp;
@@ -307,10 +460,12 @@ function updatePhysics(dt) {
       a.vx += (a.fx / a.m) * dt * 60;
       a.vy += (a.fy / a.m) * dt * 60;
 
-      const vmax = (mol.phase === 'gas' || mol.phase === 'particle' || mol.phase === 'solid')
-        ? (1.9 + ambientHeat * 3.8) * thermalScale * clamp(1.1 - Math.max(0, pressureAtm - 1) * 0.08, 0.65, 1.18)
-        : (1.1 + ambientHeat * 1.0) * Math.min(thermalScale, 1.7);
-      const cappedVmax = mol.phase === 'solid' ? Math.min(vmax, 0.75 + ambientHeat * 0.35) : vmax;
+      const vmax = isDragged
+        ? (2.4 + ambientHeat * 2.6)
+        : ((mol.phase === 'gas' || mol.phase === 'particle' || mol.phase === 'solid')
+          ? (1.9 + ambientHeat * 3.8) * thermalScale * clamp(1.1 - Math.max(0, pressureAtm - 1) * 0.08, 0.65, 1.18)
+          : (1.1 + ambientHeat * 1.0) * Math.min(thermalScale, 1.7));
+      const cappedVmax = (mol.phase === 'solid' && !isDragged) ? Math.min(vmax, 0.75 + ambientHeat * 0.35) : vmax;
 
       const v = Math.hypot(a.vx, a.vy);
       if (v > cappedVmax) {
@@ -324,7 +479,9 @@ function updatePhysics(dt) {
     }
 
     keepMoleculeInsideVessel(mol, b);
-    confineMoleculeToPhaseZone(mol, b, liquidLayout, dt);
+    if (!isDragged) {
+      confineMoleculeToPhaseZone(mol, b, liquidLayout, dt);
+    }
   }
 
   updateSolidLayerSnapAnimations(dt, liquidLayout);
@@ -335,10 +492,19 @@ function updatePhysics(dt) {
   handleLiquidMixing(dt);
   handlePhaseTransitions(dt, ambientTempC, phasePressureAtm);
   runScriptedReactions(dt, ambientTempC, pressureAtm);
+
+  if (world.dragging.mol?.alive) {
+    pinDraggedMolecule(world.dragging.mol, b, dt, true);
+  }
+
   world.molecules = world.molecules.filter(m => m.alive);
 
   if (world.selectedMolId && !world.molecules.some(m => m.id === world.selectedMolId)) {
     world.selectedMolId = null;
     markSidebarDirty();
+  }
+
+  if (world.dragging.mol && !world.molecules.some(m => m.id === world.dragging.mol.id)) {
+    clearDraggingState();
   }
 }

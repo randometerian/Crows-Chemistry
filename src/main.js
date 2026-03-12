@@ -62,8 +62,15 @@ const world = {
   },
   dragging: {
     mol: null,
+    atomId: null,
     offsetX: 0,
-    offsetY: 0
+    offsetY: 0,
+    pointerId: null,
+    targetX: 0,
+    targetY: 0,
+    startedAt: 0,
+    momentumX: 0,
+    momentumY: 0
   }
 };
 
@@ -96,8 +103,18 @@ function frame(now) {
 }
 
 function setActiveTool(tool) {
+  if (world.dragging.mol) {
+    armDraggedMoleculeRecovery(world.dragging.mol);
+  }
   world.ui.activeTool = tool;
   world.dragging.mol = null;
+  world.dragging.atomId = null;
+  world.dragging.pointerId = null;
+  world.dragging.targetX = 0;
+  world.dragging.targetY = 0;
+  world.dragging.startedAt = 0;
+  world.dragging.momentumX = 0;
+  world.dragging.momentumY = 0;
   if (tool !== 'light') stopLightBeam();
   updateThermalLabels();
 }
@@ -105,6 +122,40 @@ function setActiveTool(tool) {
 const searchWrap = document.querySelector('.searchWrap');
 const tempPresetButtons = [...document.querySelectorAll('[data-temp-preset]')];
 const pressurePresetButtons = [...document.querySelectorAll('[data-pressure-preset]')];
+const controlGroups = [...document.querySelectorAll('.controlGroup')];
+
+function setControlGroupOpen(group, open) {
+  if (!group) return;
+  group.classList.toggle('open', open);
+  const body = group.querySelector('.controlBody');
+  if (body) body.hidden = !open;
+}
+
+function collapseAllControlGroups() {
+  for (const group of controlGroups) {
+    setControlGroupOpen(group, false);
+  }
+}
+
+function armDraggedMoleculeRecovery(mol) {
+  if (!mol || !mol.alive) return;
+  const momentum = Math.hypot(world.dragging.momentumX, world.dragging.momentumY);
+  mol.dragRecoveryStartedAt = world.time;
+  mol.dragRecoveryDuration = 0.52;
+  mol.dragRecoveryUntil = world.time + mol.dragRecoveryDuration;
+  mol.dragRecoveryStrength = clamp(1.05 + momentum / 18, 1.05, 2.8);
+}
+
+function clearDraggingState() {
+  world.dragging.mol = null;
+  world.dragging.atomId = null;
+  world.dragging.pointerId = null;
+  world.dragging.targetX = 0;
+  world.dragging.targetY = 0;
+  world.dragging.startedAt = 0;
+  world.dragging.momentumX = 0;
+  world.dragging.momentumY = 0;
+}
 
 function activateTab(tab) {
   cacheCurrentTabScroll();
@@ -167,10 +218,17 @@ canvas.addEventListener('pointerdown', (e) => {
     markSidebarDirty();
   }
 
-  const c = moleculeCenter(hit.mol);
+  canvas.setPointerCapture?.(e.pointerId);
   world.dragging.mol = hit.mol;
-  world.dragging.offsetX = p.x - c.x;
-  world.dragging.offsetY = p.y - c.y;
+  world.dragging.atomId = hit.atom.id;
+  world.dragging.offsetX = p.x - hit.atom.x;
+  world.dragging.offsetY = p.y - hit.atom.y;
+  world.dragging.pointerId = e.pointerId;
+  world.dragging.targetX = hit.atom.x;
+  world.dragging.targetY = hit.atom.y;
+  world.dragging.startedAt = world.time;
+  world.dragging.momentumX = 0;
+  world.dragging.momentumY = 0;
 });
 
 window.addEventListener('pointermove', (e) => {
@@ -178,20 +236,51 @@ window.addEventListener('pointermove', (e) => {
     updateLightBeamTarget(pointerPos(e));
     return;
   }
-  if (!world.dragging.mol) return;
+  if (!world.dragging.mol || e.pointerId !== world.dragging.pointerId) return;
   const p = pointerPos(e);
-  moveMoleculeCenterTo(
-    world.dragging.mol,
-    p.x - world.dragging.offsetX,
-    p.y - world.dragging.offsetY
-  );
+  const nextTargetX = p.x - world.dragging.offsetX;
+  const nextTargetY = p.y - world.dragging.offsetY;
+  const dx = nextTargetX - world.dragging.targetX;
+  const dy = nextTargetY - world.dragging.targetY;
+  world.dragging.momentumX = clamp(world.dragging.momentumX * 0.35 + dx * 0.92, -42, 42);
+  world.dragging.momentumY = clamp(world.dragging.momentumY * 0.35 + dy * 0.92, -42, 42);
+  world.dragging.targetX = nextTargetX;
+  world.dragging.targetY = nextTargetY;
+  if (!world.running) {
+    const anchor = world.dragging.mol.atoms.find(atom => atom.id === world.dragging.atomId);
+    if (anchor) {
+      const dxAnchor = world.dragging.targetX - anchor.x;
+      const dyAnchor = world.dragging.targetY - anchor.y;
+      for (const atom of world.dragging.mol.atoms) {
+        atom.x += dxAnchor;
+        atom.y += dyAnchor;
+        atom.vx *= 0.55;
+        atom.vy *= 0.55;
+      }
+    }
+  }
 });
 
 window.addEventListener('pointerup', (e) => {
   if (world.light.firing && e.pointerId === world.light.pointerId) {
     stopLightBeam();
   }
-  world.dragging.mol = null;
+  if (world.dragging.mol && e.pointerId === world.dragging.pointerId) {
+    if (canvas.hasPointerCapture?.(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+    armDraggedMoleculeRecovery(world.dragging.mol);
+    clearDraggingState();
+  }
+});
+
+window.addEventListener('pointercancel', (e) => {
+  if (world.light.firing && e.pointerId === world.light.pointerId) {
+    stopLightBeam();
+  }
+  if (world.dragging.mol && e.pointerId === world.dragging.pointerId) {
+    if (canvas.hasPointerCapture?.(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+    armDraggedMoleculeRecovery(world.dragging.mol);
+    clearDraggingState();
+  }
 });
 
 document.querySelectorAll('.tabBtn').forEach(btn => {
@@ -204,7 +293,7 @@ document.querySelectorAll('.controlToggle').forEach(toggle => {
   toggle.addEventListener('click', () => {
     const group = toggle.closest('.controlGroup');
     if (!group) return;
-    group.classList.toggle('open');
+    setControlGroupOpen(group, !group.classList.contains('open'));
   });
 });
 
@@ -406,6 +495,7 @@ async function loadObservationCounter() {
 async function initApp() {
   world.reactionData = await loadReactionData();
   await loadObservationCounter();
+  collapseAllControlGroups();
   resize();
   refreshLucideIcons();
   updateSearchClearVisibility();

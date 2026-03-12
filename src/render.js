@@ -415,19 +415,38 @@ function drawSolidLayerSnapEffect(mol) {
   return { progress, center };
 }
 
+function getDraggedMoleculeVisual(mol) {
+  if (world.dragging.mol?.id !== mol.id) return null;
+  const progress = clamp((world.time - (world.dragging.startedAt || world.time)) / 0.18, 0, 1);
+  const easeOut = 1 - Math.pow(1 - progress, 3);
+  const pulse = Math.sin(progress * Math.PI) * 0.028;
+  return {
+    center: moleculeCenter(mol),
+    scale: 1 + easeOut * 0.032 + pulse,
+    alpha: 1
+  };
+}
+
 function drawMolecule(mol, t) {
   const snapState = drawSolidLayerSnapEffect(mol);
-  if (!snapState) {
+  const dragState = getDraggedMoleculeVisual(mol);
+  if (!snapState && !dragState) {
     renderMoleculeBody(mol, t);
     return;
   }
 
-  const popScale = 1 + Math.sin(snapState.progress * Math.PI) * 0.12 - (1 - snapState.progress) * 0.06;
+  const center = dragState?.center || snapState?.center || moleculeCenter(mol);
+  const snapScale = snapState
+    ? (1 + Math.sin(snapState.progress * Math.PI) * 0.12 - (1 - snapState.progress) * 0.06)
+    : 1;
+  const dragScale = dragState?.scale || 1;
+  const scale = snapScale * dragScale;
+  const alpha = snapState ? (0.90 + Math.sin(snapState.progress * Math.PI) * 0.10) : 1;
   ctx.save();
-  ctx.globalAlpha = 0.90 + Math.sin(snapState.progress * Math.PI) * 0.10;
-  ctx.translate(snapState.center.x, snapState.center.y);
-  ctx.scale(popScale, popScale);
-  ctx.translate(-snapState.center.x, -snapState.center.y);
+  ctx.globalAlpha = alpha;
+  ctx.translate(center.x, center.y);
+  ctx.scale(scale, scale);
+  ctx.translate(-center.x, -center.y);
   renderMoleculeBody(mol, t);
   ctx.restore();
 }
