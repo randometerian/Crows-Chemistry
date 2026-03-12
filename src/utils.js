@@ -35,6 +35,7 @@ const observationCounter = document.getElementById('observationCounter');
 
 const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
 const TAU = Math.PI * 2;
+const GAS_CONSTANT_J_PER_MOL_K = 8.314462618;
 const LIGHT_BANDS = [
   { id: 'radio', label: 'Radio', color: '#7db5ff', energy: 0, photochemical: false },
   { id: 'microwave', label: 'Microwave', color: '#87d3ff', energy: 1, photochemical: false },
@@ -78,7 +79,35 @@ function getEffectivePressureAtm() {
   const volumeScale = clamp(420000 / Math.max(180000, area), 0.7, 1.7);
   const tempScale = clamp(cToK(getEffectiveTemperatureC()) / 298.15, 0.45, 5.5);
   const gasContribution = getGasMoleculeCount() * 0.035 * tempScale * volumeScale;
-  return clamp(world.pressureAtm + gasContribution, 0.05, 150);
+  return clamp(world.pressureAtm + gasContribution, 0.01, 150);
+}
+function formatPressureAtm(pressureAtm) {
+  if (pressureAtm < 0.1) return pressureAtm.toFixed(3);
+  if (pressureAtm < 10) return pressureAtm.toFixed(2);
+  return pressureAtm.toFixed(1);
+}
+function getPressureAdjustedBoilingPointC(type, pressureAtm) {
+  const config = EVAPORATION_CONFIG[type];
+  if (!config) return null;
+
+  const pressure = clamp(
+    pressureAtm,
+    config.minPressureAtm || 0.01,
+    150
+  );
+  const normalBoilK = cToK(config.boilC);
+  const dHvapJ = Math.max(12000, (config.dHvapKJ || 35) * 1000);
+  const invT = (1 / normalBoilK) - ((GAS_CONSTANT_J_PER_MOL_K / dHvapJ) * Math.log(pressure));
+  if (!Number.isFinite(invT) || invT <= 0) return config.boilC;
+  return clamp(kToC(1 / invT), -120, 3200);
+}
+function getPressureAdjustedCondensePointC(type, pressureAtm) {
+  const config = EVAPORATION_CONFIG[type];
+  if (!config) return null;
+  const boilC = getPressureAdjustedBoilingPointC(type, pressureAtm);
+  const baseGap = Math.max(4, config.boilC - config.condenseC);
+  const gapScale = pressureAtm < 1 ? clamp(0.88 + pressureAtm * 0.2, 0.72, 1.05) : clamp(1 - Math.min(pressureAtm - 1, 8) * 0.03, 0.72, 1);
+  return boilC - baseGap * gapScale;
 }
 function formatThermalDelta(deltaC) {
   if (!Number.isFinite(deltaC) || Math.abs(deltaC) < 0.5) return '';

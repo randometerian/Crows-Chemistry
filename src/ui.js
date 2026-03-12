@@ -38,7 +38,7 @@ function updateThermalLabels() {
   pressureSlider.style.setProperty('--fill', `${clamp(pressureFill, 0, 100)}%`);
   heatLabel.textContent = `Base: ${c}°C / ${f}°F / ${k}K • Effective: ${ambientC}°C / ${ambientF}°F / ${ambientK}K`;
   pressureSlider.value = String(world.pressureAtm);
-  pressureLabel.textContent = `Pressure: ${effectivePressureAtm.toFixed(2)} atm • Base ${world.pressureAtm.toFixed(2)} atm • Gas ${getGasMoleculeCount()}`;
+  pressureLabel.textContent = `Pressure: ${formatPressureAtm(effectivePressureAtm)} atm • Base ${formatPressureAtm(world.pressureAtm)} atm • Gas ${getGasMoleculeCount()}`;
   if (!world.ui.editingTempInput) {
     tempInput.value = String(Math.round(toSelectedUnitTemp(world.temperatureC)));
   }
@@ -55,14 +55,14 @@ function updateThermalLabels() {
   const stirringText = world.stirring.timeLeft > 0 ? ` • Stirring ${world.stirring.timeLeft.toFixed(1)}s @ ${world.stirring.power.toFixed(1)}x` : '';
   const lightText = world.light.firing ? ` • ${getLightBand(world.light.band).label} beam @ ${world.light.power.toFixed(1)}x` : (world.ui.activeTool === 'light' ? ` • Light tool armed (${getLightBand(world.light.band).label})` : '');
   const waterText = primaryChem ? ` • ${primaryChem.chemistryLabel}` : '';
-  simLabel.textContent = `Base ${c}°C • Offset ${formatThermalDelta(pulse) || '0°C'} • Effective ${ambientC}°C • ${effectivePressureAtm.toFixed(2)} atm${waterText} • ${world.timeScale}x speed${stirringText}${lightText}`;
+  simLabel.textContent = `Base ${c}°C • Offset ${formatThermalDelta(pulse) || '0°C'} • Effective ${ambientC}°C • ${formatPressureAtm(effectivePressureAtm)} atm${waterText} • ${world.timeScale}x speed${stirringText}${lightText}`;
   timeScaleBtn.textContent = `Time ${world.timeScale}x`;
   stirBtn.classList.toggle('active', world.stirring.timeLeft > 0);
   stirBtn.textContent = world.stirring.timeLeft > 0 ? 'Stirring' : 'Stir';
   lightBtn.classList.toggle('active', world.ui.activeTool === 'light');
   lightBtn.textContent = world.ui.activeTool === 'light' ? 'Light Tool On' : 'Light Tool';
   canvas.style.cursor = world.ui.activeTool === 'light' ? 'crosshair' : 'default';
-  statusText.innerHTML = `${world.running ? 'Running' : 'Paused'}<br>${world.molecules.length} molecules<br>${ambientC}°C effective • ${effectivePressureAtm.toFixed(2)} atm${primaryChem ? ` • ${primaryChem.chemistryLabel}` : ''}<br>${world.stats.reactions} reactions • heat +${Math.round(world.thermalStats.addedC)} / -${Math.round(world.thermalStats.removedC)}${world.ui.activeTool === 'light' ? `<br>${getLightBand(world.light.band).label} tool ${world.light.firing ? `firing @ ${world.light.power.toFixed(1)}x` : 'armed'}` : ''}`;
+  statusText.innerHTML = `${world.running ? 'Running' : 'Paused'}<br>${world.molecules.length} molecules<br>${ambientC}°C effective • ${formatPressureAtm(effectivePressureAtm)} atm${primaryChem ? ` • ${primaryChem.chemistryLabel}` : ''}<br>${world.stats.reactions} reactions • heat +${Math.round(world.thermalStats.addedC)} / -${Math.round(world.thermalStats.removedC)}${world.ui.activeTool === 'light' ? `<br>${getLightBand(world.light.band).label} tool ${world.light.firing ? `firing @ ${world.light.power.toFixed(1)}x` : 'armed'}` : ''}`;
 }
 
 function cycleTimeScale() {
@@ -450,6 +450,7 @@ function renderInspectTab() {
 
   const hint = document.createElement('div');
   const evap = EVAPORATION_CONFIG[selected.type];
+  const effectivePressureAtm = getEffectivePressureAtm();
   const ionProfile = AQUEOUS_ION_PROFILES[selected.type];
   const weakAcid = WEAK_AQUEOUS_ACIDS[selected.type];
   hint.className = 'hintBox';
@@ -465,7 +466,7 @@ function renderInspectTab() {
       <strong style="color:var(--text)">Can turn into:</strong> ${formatSpeciesList(profile.turnsInto)}<br>
       <strong style="color:var(--text)">Can be made from:</strong> ${formatSpeciesList(profile.formedFrom)}
     </div>
-    ${evap ? `<div style="margin-top:10px;"><strong style="color:var(--text)">Thermal behavior:</strong> boils near ${evap.boilC}°C, condenses near ${evap.condenseC}°C.</div>` : ''}
+    ${evap ? `<div style="margin-top:10px;"><strong style="color:var(--text)">Thermal behavior:</strong> boils near ${Math.round(getPressureAdjustedBoilingPointC(selected.type, effectivePressureAtm))}°C and condenses near ${Math.round(getPressureAdjustedCondensePointC(selected.type, effectivePressureAtm))}°C at ${formatPressureAtm(effectivePressureAtm)} atm.</div>` : ''}
     ${ionProfile ? `<div style="margin-top:10px;"><strong style="color:var(--text)">In water:</strong> dissociates into ${Object.keys(ionProfile.ions).map(formatIonLabel).join(' and ')}.</div>` : ''}
     ${!ionProfile && weakAcid && selected.phase === 'liquid' ? `<div style="margin-top:10px;"><strong style="color:var(--text)">In water:</strong> behaves as a weak acid.</div>` : ''}
   `;

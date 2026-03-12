@@ -1107,8 +1107,7 @@ function handleLiquidMixing(dt) {
 }
 
 function handleDissolution(dt) {
-  const waters = world.molecules.filter(m => m.alive && m.phase === 'liquid' && m.miscibleGroup === 'water');
-  if (!waters.length) return;
+  const waters = getLiquidWaterMolecules();
 
   for (const mol of world.molecules) {
     if (!mol.alive) continue;
@@ -1138,7 +1137,9 @@ function handleDissolution(dt) {
     }
 
     if (mol.dissolved && !enoughWater) {
-      const chance = clamp(config.precipitateRate * dt * 60, 0, 0.08);
+      const chance = waters.length === 0
+        ? 1
+        : clamp(config.precipitateRate * dt * 60, 0, 0.08);
       if (Math.random() < chance) {
         setMoleculeDissolvedState(mol, false);
         addReactionLog('solution', `${mol.display} precipitated out of solution`, { source: mol.type, x: center.x, y: center.y });
@@ -1148,8 +1149,7 @@ function handleDissolution(dt) {
 }
 
 function handleCarbonation(dt, ambientTempC, pressureAtm) {
-  const waters = world.molecules.filter(m => m.alive && m.phase === 'liquid' && m.miscibleGroup === 'water');
-  if (!waters.length) return;
+  const waters = getLiquidWaterMolecules();
 
   const co2Molecules = world.molecules.filter(m => m.alive && m.type === 'CO2');
   const stirBoost = world.stirring.timeLeft > 0 ? 1.8 : 1;
@@ -1192,7 +1192,7 @@ function handleCarbonation(dt, ambientTempC, pressureAtm) {
         0,
         0.20
       );
-      if (!nearbyWaterSupport || Math.random() < releaseChance) {
+      if (!nearbyWaterSupport || waters.length === 0 || Math.random() < releaseChance) {
         setMoleculeDissolvedState(mol, false);
         const releaseCenter = moleculeCenter(mol);
         for (const atom of mol.atoms) {
@@ -1275,21 +1275,23 @@ function handlePhaseTransitions(dt, ambientTempC, pressureAtm) {
 
     const center = moleculeCenter(mol);
     const yNorm = clamp((center.y - b.y) / Math.max(1, b.h), 0, 1);
-    const pressureShift = (pressureAtm - 1) * 28;
-    const boilC = config.boilC + pressureShift;
-    const condenseC = config.condenseC + pressureShift * 0.8;
+    const boilC = getPressureAdjustedBoilingPointC(mol.type, pressureAtm);
+    const condenseC = getPressureAdjustedCondensePointC(mol.type, pressureAtm);
+    const vacuumBoost = pressureAtm < 1
+      ? clamp(Math.pow(1 / Math.max(pressureAtm, 0.01), 0.42), 1, 5.5)
+      : 1;
 
     if (mol.phase === 'liquid' && ambientTempC > boilC) {
       const excess = ambientTempC - boilC;
       const surfaceBias = clamp(1.25 - yNorm, 0.45, 1.35);
-      const chance = clamp((0.0004 + excess / 5200) * config.evapRate * surfaceBias * dt * 60, 0, 0.18);
+      const chance = clamp((0.0005 + excess / 4200) * config.evapRate * surfaceBias * vacuumBoost * dt * 60, 0, 0.42);
       if (Math.random() < chance) {
         setMoleculePhaseMode(mol, 'gas');
         for (const atom of mol.atoms) {
           atom.vx += rand(-0.45, 0.45);
           atom.vy -= rand(0.2, 0.9);
         }
-        applyThermalImpulse(config.coolDeltaC, `${mol.display} evaporated`, {
+        applyThermalImpulse(config.coolDeltaC * clamp(1 + (vacuumBoost - 1) * 0.35, 1, 2.1), `${mol.display} evaporated`, {
           x: center.x,
           y: center.y,
           label: `${getSpeciesDisplayLabel(mol.type)} vapor`,

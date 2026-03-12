@@ -1097,10 +1097,10 @@ const SPEED_PRESET = [0.5, 1, 2, 4, 8];
 const MAX_REACTION_LOG = 1200;
 const THERMAL_EVENT_TTL = 1.6;
 const EVAPORATION_CONFIG = {
-  H2O: { boilC: 100, condenseC: 92, gasDensity: 0.06, gasMiscibleGroup: 'gas', liquidDensity: 1.0, liquidMiscibleGroup: 'water', evapRate: 0.08, coolDeltaC: -10 },
-  H2O2: { boilC: 150, condenseC: 138, gasDensity: 0.08, gasMiscibleGroup: 'gas', liquidDensity: 1.45, liquidMiscibleGroup: 'water', evapRate: 0.05, coolDeltaC: -12 },
-  acetone: { boilC: 56, condenseC: 46, gasDensity: 0.18, gasMiscibleGroup: 'gas', liquidDensity: 0.79, liquidMiscibleGroup: 'organic-light', evapRate: 0.14, coolDeltaC: -9 },
-  CHCl3: { boilC: 61, condenseC: 52, gasDensity: 0.28, gasMiscibleGroup: 'gas', liquidDensity: 1.49, liquidMiscibleGroup: 'organic-heavy', evapRate: 0.10, coolDeltaC: -8 }
+  H2O: { boilC: 100, condenseC: 92, gasDensity: 0.06, gasMiscibleGroup: 'gas', liquidDensity: 1.0, liquidMiscibleGroup: 'water', evapRate: 0.08, coolDeltaC: -10, dHvapKJ: 40.65, minPressureAtm: 0.01 },
+  H2O2: { boilC: 150, condenseC: 138, gasDensity: 0.08, gasMiscibleGroup: 'gas', liquidDensity: 1.45, liquidMiscibleGroup: 'water', evapRate: 0.05, coolDeltaC: -12, dHvapKJ: 51.0, minPressureAtm: 0.02 },
+  acetone: { boilC: 56, condenseC: 46, gasDensity: 0.18, gasMiscibleGroup: 'gas', liquidDensity: 0.79, liquidMiscibleGroup: 'organic-light', evapRate: 0.14, coolDeltaC: -9, dHvapKJ: 31.3, minPressureAtm: 0.02 },
+  CHCl3: { boilC: 61, condenseC: 52, gasDensity: 0.28, gasMiscibleGroup: 'gas', liquidDensity: 1.49, liquidMiscibleGroup: 'organic-heavy', evapRate: 0.10, coolDeltaC: -8, dHvapKJ: 29.4, minPressureAtm: 0.02 }
 };
 const AQUEOUS_ION_PROFILES = {
   HCl: { ions: { 'H3O+': 1, 'Cl-': 1 }, strength: 'strong-acid' },
@@ -1667,8 +1667,18 @@ function setMoleculeDissolvedState(mol, dissolved) {
   }
 }
 
+function getLiquidWaterMolecules() {
+  return world.molecules.filter(m => m.alive && m.type === 'H2O' && m.phase === 'liquid');
+}
+
+function hasLiquidWaterSolvent() {
+  return getLiquidWaterMolecules().length > 0;
+}
+
 function isWaterPhaseMolecule(mol) {
   if (!mol?.alive || mol.phase !== 'liquid') return false;
+  if (mol.type === 'H2O') return true;
+  if (!hasLiquidWaterSolvent()) return false;
   if (mol.miscibleGroup === 'water') return true;
   return mol.dissolved && DISSOLUTION_CONFIG[mol.type]?.solventGroup === 'water';
 }
@@ -1801,7 +1811,11 @@ function moleculeCenter(mol) {
 
 function getLiquidLayerKey(mol) {
   if (mol.type === 'H2O' && mol.phase === 'liquid') return 'water';
-  if (mol.dissolved) return DISSOLUTION_CONFIG[mol.type]?.solventGroup || mol.miscibleGroup || mol.type;
+  if (mol.dissolved) {
+    const solventGroup = DISSOLUTION_CONFIG[mol.type]?.solventGroup;
+    if (solventGroup === 'water' && !hasLiquidWaterSolvent()) return mol.type;
+    return solventGroup || mol.miscibleGroup || mol.type;
+  }
   return mol.type;
 }
 

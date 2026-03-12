@@ -18,6 +18,56 @@ function drawGrid(w, h) {
   ctx.restore();
 }
 
+function drawLiquidLayerBadge(layer, b) {
+  const labelType = layer.layerKey === 'water' ? 'H2O' : layer.layerKey;
+  const title = layer.layerKey === 'water' && layer.dissolvedTypes.includes('CO2')
+    ? 'Carbonated water'
+    : getSpeciesDisplayName(labelType);
+  const detailParts = [];
+  if (layer.chemistry) detailParts.push(layer.chemistry.chemistryLabel);
+  if (layer.dissolvedTypes.length) {
+    detailParts.push(layer.dissolvedTypes.slice(0, 2).map(getSpeciesDisplayLabel).join(', '));
+  }
+  if (layer.chemistry?.majorIons.length) {
+    detailParts.push(layer.chemistry.majorIons.slice(0, 2).map(entry => formatIonLabel(entry.ion)).join(', '));
+  }
+  const detail = detailParts.join('  •  ');
+  const badgeX = b.x + 10;
+  const badgeY = layer.y + Math.max(8, Math.min(18, layer.h * 0.18));
+  const titleFont = '600 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif';
+  const detailFont = '10px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif';
+
+  ctx.save();
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.font = titleFont;
+  const titleWidth = ctx.measureText(title).width;
+  ctx.font = detailFont;
+  const detailWidth = detail ? ctx.measureText(detail).width : 0;
+  const contentWidth = Math.max(titleWidth, detailWidth);
+  const badgeWidth = Math.min(b.w - 26, Math.max(108, contentWidth + 22));
+  const badgeHeight = detail ? 34 : 22;
+
+  ctx.fillStyle = 'rgba(11,16,24,0.56)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 10);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(244,247,252,0.96)';
+  ctx.font = titleFont;
+  ctx.fillText(title, badgeX + 11, badgeY + 7);
+
+  if (detail) {
+    ctx.fillStyle = 'rgba(210,219,232,0.88)';
+    ctx.font = detailFont;
+    ctx.fillText(detail, badgeX + 11, badgeY + 21);
+  }
+  ctx.restore();
+}
+
 function drawVessel() {
   const b = world.bounds;
   ctx.save();
@@ -49,22 +99,8 @@ function drawVessel() {
       ctx.roundRect(b.x + 3, layer.y, b.w - 6, layer.h, 12);
       ctx.fill();
 
-      const labelType = layer.layerKey === 'water' ? 'H2O' : layer.layerKey;
-      const label = layer.layerKey === 'water' && layer.dissolvedTypes.includes('CO2')
-        ? 'Carbonated water'
-        : getSpeciesDisplayName(labelType);
-      const dissolvedLabel = layer.dissolvedTypes.length
-        ? ` + ${layer.dissolvedTypes.slice(0, 3).map(getSpeciesDisplayLabel).join(', ')}${layer.dissolvedTypes.length > 3 ? '...' : ''}`
-        : '';
-      const chemistryLabel = layer.chemistry
-        ? ` • ${layer.chemistry.chemistryLabel}${layer.chemistry.majorIons.length ? ` • ${layer.chemistry.majorIons.slice(0, 2).map(entry => formatIonLabel(entry.ion)).join(', ')}` : ''}`
-        : '';
-      if (layer.h >= 18) {
-        ctx.fillStyle = 'rgba(231,237,245,.68)';
-        ctx.font = '11px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(`${label}${dissolvedLabel}${chemistryLabel}`, b.x + 10, layer.centerY);
+      if (layer.h >= 28) {
+        drawLiquidLayerBadge(layer, b);
       }
     }
 
